@@ -113,6 +113,7 @@ def frechet_distance(mu1, cov1, mu2, cov2, eps=1e-6):
     fd = diff.dot(diff) + torch.trace(cov1 + cov2 - 2 * sqrt_cov_prod)
     return fd.item()
 
+# Frechet Graph Distance (FGD)
 def compute_fgd_scores(original_graphs, generated_graphs, encoder, device="cpu"):
     """
     original_graphs: list of PyG Data objects
@@ -158,11 +159,7 @@ def compute_fgd_scores(original_graphs, generated_graphs, encoder, device="cpu")
     return fgd_scores, fgd_mean, fgd_std
 
 
-
-
-# -------------------------------
 # Convert PyG Data → GraKeL Graph
-# -------------------------------
 def pyg_to_grakel_graph(data):
     if data.edge_index.size(1) == 0:
         return None
@@ -178,18 +175,18 @@ def pyg_to_grakel_graph(data):
     return GrakelGraph(edges, node_labels=node_labels)
 
 
-# -------------------------------
+
 # Euclidean Distance (embeddings)
-# -------------------------------
+
 emb1 = original_graph
 emb2 = generated_graph
 def euclidean_distance(emb1, emb2):
     return float(torch.norm(emb1 - emb2, p=2))
 
 
-# -------------------------------
+
 # Maximum Mean Discrepancy (MMD)
-# -------------------------------
+
 def mmd_distance(emb1, emb2, sigma=1.0):
     def gaussian_kernel(x, y, sig):
         return torch.exp(-torch.norm(x - y, p=2)**2 / (2 * sig**2))
@@ -200,10 +197,7 @@ def mmd_distance(emb1, emb2, sigma=1.0):
         - 2 * gaussian_kernel(emb1, emb2, sigma)
     )
 
-
-# -------------------------------
 # Graph Kernel Similarity (WL)
-# -------------------------------
 def graph_kernel_similarity(original_graph, generated_graph, h=2):
     g1 = pyg_to_grakel_graph(original_graph)
     g2 = pyg_to_grakel_graph(generated_graph)
@@ -213,10 +207,7 @@ def graph_kernel_similarity(original_graph, generated_graph, h=2):
 
     return float(K[0, 1])
 
-
-# -------------------------------
 # Spectral Distance (Laplacian)
-# -------------------------------
 def spectral_distance(original_graph, generated_graph, k=20):
     def laplacian_spectrum(data, k):
         G = to_networkx(data, to_undirected=True)
@@ -230,123 +221,7 @@ def spectral_distance(original_graph, generated_graph, k=20):
     s2 = laplacian_spectrum(generated_graph, k)
     return float(np.linalg.norm(s1 - s2))
 
-
-# -------------------------------
-# Compute metrics for all pairs
-# -------------------------------
-def compute_graph_distances_list(
-    original_graph,
-    generated_graph,
-    encoder,
-    device="cpu"
-):
-    assert len(original_graph) == len(generated_graph), \
-        "Lists must be equal length."
-    encoder = GraphEncoder(node_features=node_features)
-    encoder = encoder.to(device)
-    encoder.eval()
-
-    # Lists for each metric
-    euclid_list = []
-    mmd_list = []
-    kernel_list = []
-    spectral_list = []
-
-    # List of dictionaries (per graph pair)
-    metrics_per_graph = []
-
-    for o_graph, g_graph in zip(original_graph, generated_graph):
-
-        o_graph = o_graph.to(device)
-        g_graph = g_graph.to(device)
-
-        # batch vectors
-        o_batch = torch.zeros(o_graph.x.size(0), dtype=torch.long, device=device)
-        g_batch = torch.zeros(g_graph.x.size(0), dtype=torch.long, device=device)
-
-        # Embeddings
-        with torch.no_grad():
-            emb_o = encoder(o_graph.x, o_graph.edge_index, o_batch).squeeze()
-            emb_g = encoder(g_graph.x, g_graph.edge_index, g_batch).squeeze()
-
-        # Metrics
-        euclid = euclidean_distance(emb_o, emb_g)
-        mmd = mmd_distance(emb_o, emb_g)
-        kernel = graph_kernel_similarity(o_graph, g_graph)
-        spectral = spectral_distance(o_graph, g_graph)
-
-        # Store
-        euclid_list.append(euclid)
-        mmd_list.append(mmd)
-        kernel_list.append(kernel)
-        spectral_list.append(spectral)
-
-        metrics_per_graph.append({
-            "euclidean_distance": euclid,
-            "mmd": mmd,
-            "graph_kernel_similarity": kernel,
-            "spectral_distance": spectral
-        })
-
-    # Summary statistics
-    summary = {
-        "euclidean_mean": float(np.mean(euclid_list)),
-        "euclidean_std": float(np.std(euclid_list)),
-
-        "mmd_mean": float(np.mean(mmd_list)),
-        "mmd_std": float(np.std(mmd_list)),
-
-        "kernel_mean": float(np.mean(kernel_list)),
-        "kernel_std": float(np.std(kernel_list)),
-
-        "spectral_mean": float(np.mean(spectral_list)),
-        "spectral_std": float(np.std(spectral_list)),
-    }
-
-    return metrics_per_graph, euclid_list, mmd_list, kernel_list, spectral_list, summary
-
-encoder = GraphEncoder(node_features=node_features)
-
-metrics_per_graph, euclid_list, mmd_list, kernel_list, spectral_list, summary = \
-    compute_graph_distances_list(
-        original_graph,
-        generated_graph,
-        encoder,
-        device="cpu"
-    )
-
-#print(metrics_per_graph)   # list of dictionaries (one per graph)
-summary = {
-"fgd_mean": float(np.mean(fgd_list)),
-"euclidean_mean": float(np.mean(euclid_list)),
-"mmd_mean": float(np.mean(mmd_list)),
-"kernel_mean": float(np.mean(kernel_list)),
-"spectral_mean": float(np.mean(spectral_list)),
-}
-
-print(summary)             # mean + std for all metrics
-
-summary = {
-"fgd_mean": fgd_list,
-"euclidean_mean": euclid_list,
-"mmd_mean": mmd_list,
-"kernel_mean": kernel_list,
-"spectral_mean": spectral_list,
-}
-    
-
-# Convert to DataFrame
-df = pd.DataFrame(summary)
-
-# Create filename with dataset name and seed value
-filename = f"{dataset_name}_{types}_seed{seed}.csv"
-
-# Save to CSV
-df.to_csv(filename, index=False)
-
-print(f"CSV saved as {filename}")
-
-    
+  
     
 def ensure_nx(G):
     if not isinstance(G, nx.Graph):
@@ -394,48 +269,8 @@ def similarity_score(a, b):
     return max(0.0, (1 - dist / val_range) * 100)
 
 
-# ── Main evaluation loop ──────────────────────────────────────────────────────
-degree_scores      = []
-clustering_scores  = []   
-bc_scores          = []
-cc_scores          = []
 
-for G_orig, G_gen in zip(original_graph, generated_graph):
-    G_orig = ensure_nx(G_orig)
-    G_gen  = ensure_nx(G_gen)
 
-    degree_scores.append(similarity_score(
-        degree_distribution(G_orig),
-        degree_distribution(G_gen)
-    ))
-    clustering_scores.append(similarity_score(
-        clustering_coeff_distribution(G_orig),
-        clustering_coeff_distribution(G_gen)
-    ))
-    bc_scores.append(similarity_score(
-        bc_distribution(G_orig),
-        bc_distribution(G_gen)
-    ))
-    cc_scores.append(similarity_score(
-        cc_distribution(G_orig),
-        cc_distribution(G_gen)
-    ))
-
-structural = {
-    "degree_scores":     degree_scores,
-    "clustering_scores": clustering_scores,   # renamed from lcc_scores
-    "bc_scores":         bc_scores,
-    "cc_scores":         cc_scores,
-}
-df = pd.DataFrame(structural)
-
-# Create filename with dataset name and seed value
-filename = f"structural_{dataset_name}_{types}_seed{seed}.csv"
-
-# Save to CSV
-df.to_csv(filename, index=False)
-
-print(f"CSV saved as {filename}")
     
 prefixes = ["Cor"]
 files = glob.glob("*.csv")
