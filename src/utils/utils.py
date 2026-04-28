@@ -329,4 +329,52 @@ def visualize_graphs(original_graphs, generated_graphs, dataset_name, seed_value
             plt.close()
             print(f"Saved {filename}")
 
-        
+def save_metrics_data():      
+    prefixes = ["Cor"]
+    files = glob.glob("*.csv")
+
+    with open(f'{types}_metrics_summary.txt', "w") as out_file:
+        out_file.write("Metric Summary (Mean and Std)\n")
+        out_file.write("="*50 + "\n\n")
+
+        for prefix in prefixes:
+
+            # --- First metric group (position 0:4) ---
+            files_group1 = [
+                file for file in files if os.path.basename(file)[:3] == prefix
+            ]
+
+            if len(files_group1) > 0:
+                dfs1 = [pd.read_csv(file) for file in files_group1]
+                combined1 = pd.concat(dfs1, ignore_index=True)
+
+                mean1 = combined1.mean(numeric_only=True)
+                std1 = combined1.std(numeric_only=True)
+
+                summary1 = pd.DataFrame({"Mean": mean1, "Std": std1})
+
+                out_file.write(f"Dataset: {prefix} (Metric Set 1)\n")
+                out_file.write(summary1.to_string())
+                out_file.write("\n\n")
+
+            # --- Second metric group (position 12:16) ---
+            files_group2 = [
+                file for file in files if os.path.basename(file)[11:14] == prefix
+            ]
+
+            if len(files_group2) > 0:
+                dfs2 = [pd.read_csv(file) for file in files_group2]
+                combined2 = pd.concat(dfs2, ignore_index=True)
+
+                mean2 = combined2.mean(numeric_only=True)
+                std2 = combined2.std(numeric_only=True)
+
+                summary2 = pd.DataFrame({"Mean": mean2, "Std": std2})
+
+                out_file.write(f"Dataset: {prefix} (Metric Set 2)\n")
+                out_file.write(summary2.to_string())
+                out_file.write("\n\n")
+
+            out_file.write("-"*50 + "\n\n")
+
+    print("Results saved to metrics_summary.txt")

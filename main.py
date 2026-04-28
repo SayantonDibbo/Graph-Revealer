@@ -49,9 +49,111 @@ from torch_geometric.utils import k_hop_subgraph
 from collections import Counter
 
 
+import argparse
+import torch
+import os
+import random
+import numpy as np
+
+from config import *
+
+# (Assume your existing imports: torch_geometric, sklearn, etc.)
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Graph Learning + Diffusion Pipeline")
 
+    parser.add_argument("--dataset", type=str, default=DATASET_NAME,
+                        choices=["Cora", "USA"], help="Dataset name")
+
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED,
+                        help="Random seed")
+
+    parser.add_argument("--batch_size", type=int, default=BATCH_SIZE)
+
+    parser.add_argument("--epochs", type=int, default=None,
+                        help="Override training epochs")
+
+    parser.add_argument("--mode", type=str, default="train",
+                        choices=["train", "generate"],
+                        help="Run mode")
+
+    return parser.parse_args()
+
+
+def prepare_dataset(args):
+    dataset_name = args.dataset
+
+    config = DATASET_CONFIG[dataset_name]
+
+    num_epoch1 = config["num_epoch1"]
+    num_epoch2 = config["num_epoch2"]
+    classes = config["classes"]
+    max_node = config["max_node"]
+
+    return num_epoch1, num_epoch2, classes, max_node
+
+
+def main():
+    args = parse_args()
+
+    print(f"Running with config: {args}")
+
+    # Set seed
+    set_seed(args.seed)
+
+    # Dataset config
+    num_epoch1, num_epoch2, classes, max_node = prepare_dataset(args)
+
+    # ======================
+    # DATA LOADING
+    # ======================
+    from your_module import node_to_graph_dataset  # adjust import
+
+    dataset = node_to_graph_dataset(
+        dataset_name=args.dataset,
+        root=ROOT_DIR,
+        k_hop=K_HOP
+    )
+
+    print(f"Loaded dataset: {args.dataset}, size={len(dataset)}")
+
+    # ======================
+    # TRAIN / GENERATE
+    # ======================
+    if args.mode == "train":
+
+        from your_module import train_pipeline  # wrap your logic
+
+        train_pipeline(
+            dataset=dataset,
+            batch_size=args.batch_size,
+            epochs=args.epochs or num_epoch1,
+            classes=classes,
+            max_node=max_node
+        )
+
+    elif args.mode == "generate":
+
+        from your_module import generation_pipeline
+
+        generation_pipeline(
+            dataset=dataset,
+            classes=classes,
+            max_node=max_node
+        )
+
+
+if __name__ == "__main__":
+    main()
 
 
 
