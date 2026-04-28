@@ -240,3 +240,17 @@ def draw_random_graph_samples(dataset, dataset_name, num_classes, num_samples=20
             ax.grid(True)
 
         plt.savefig(os.path.join(model_save_path, 'test_embedding_with_labels.png'))
+
+def generate_graphs_for_labels(models, labels):
+            """Generate graphs for list of labels"""
+            graphs = []
+            print(f"\nGenerating {len(labels)} graphs...")
+        
+            for i, label in enumerate(tqdm(labels)):
+                adj, feat = gan.sample(label)
+                graphs.append({'adj': adj, 'features': feat, 'label': label})
+        
+                if (i + 1) % 5 == 0:
+                    torch.cuda.empty_cache()
+        
+            return graphs
