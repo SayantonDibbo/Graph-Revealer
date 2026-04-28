@@ -13,9 +13,6 @@ import torch.nn as nn
 from torch_geometric.nn import GCNConv, global_mean_pool, global_max_pool,GINConv
 from torch_geometric.utils import to_dense_adj, dense_to_sparse
 
-import os
-import random
-import matplotlib.pyplot as plt
 import networkx as nx
 import glob
 import gc
@@ -51,51 +48,69 @@ from torch_geometric.datasets import PolBlogs
 from torch_geometric.utils import k_hop_subgraph
 from collections import Counter
 
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-print(f"Using device: {device}")
 
-from src.models import gnn
-from utils import utils
+def train_model(model, train_loader, test_loader, optimizer, criterion, num_epochs=1000, model_save_path='models/'):
+            best_model_path = os.path.join(model_save_path, 'best_model.pth')
+            best_test_accuracy = 0.0
+            best_f1 = 0.0
 
+            log_data = {'Epoch': [], 'Average Loss': [], 'Test Accuracy': [], 'F1 Score': []}
 
+            for epoch in tqdm(range(num_epochs), desc='Training'):
+                total_loss = 0
+                total_samples = 0
 
+                # Training loop
+                model.train()
+                for data in train_loader:
+                    x, edge_index, y = data.x, data.edge_index, data.y
+                    optimizer.zero_grad()
+                    out = model(x, edge_index, data.batch)
+                    loss = criterion(out, y)
+                    loss.backward()
+                    optimizer.step()
+                    total_loss += loss.item() * data.num_graphs
+                    total_samples += data.num_graphs
 
-def main():
-    batch_size = 64
-    num_epochs = num_epoch
+                avg_loss = total_loss / total_samples
 
-    dataset = utils.load_nci1()
+                # Test loop
+                model.eval()
+                correct = 0
+                total = 0
+                true_labels = []
+                predicted_labels = []
+                with torch.no_grad():
+                    for data in test_loader:
+                        x, edge_index, y = data.x, data.edge_index, data.y
+                        out = model(x, edge_index, data.batch)
+                        _, predicted = torch.max(out, 1)
+                        total += y.size(0)
+                        correct += (predicted == y).sum().item()
+                        true_labels.extend(y.numpy())
+                        predicted_labels.extend(predicted.numpy())
 
-    target_dataset, shadow_dataset = train_test_split(dataset, test_size=0.5, random_state=42)
+                test_accuracy = correct / total
+                f1 = f1_score(true_labels, predicted_labels, average='weighted')
+                tqdm.write(f'Epoch [{epoch + 1}/{num_epochs}], Average Loss: {avg_loss:.5f}, Test Accuracy: {test_accuracy:.5f}, F1 Score: {f1:.5f}')
 
-    # Split dataset into training and test sets
-    train_dataset, test_dataset = train_test_split(target_dataset, test_size=0.2, random_state=42)
+                # Log data
+                log_data['Epoch'].append(epoch + 1)
+                log_data['Average Loss'].append(avg_loss)
+                log_data['Test Accuracy'].append(test_accuracy)
+                log_data['F1 Score'].append(f1)
 
-    # Draw graphs from the test dataset before training
-    utils.draw_random_graph_samples(test_dataset, dataset_name, 2)
+                # Save the best model based on test accuracy and F1-score
+                if test_accuracy > best_test_accuracy or (test_accuracy == best_test_accuracy and best_f1 < f1):
+                    tqdm.write("$$$ best model is updated according to accuracy! $$$")
+                    best_test_accuracy = test_accuracy
+                    best_f1 = f1
+                    os.makedirs(model_save_path, exist_ok=True)
+                    torch.save(model.state_dict(), best_model_path)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, shuffle=False)
+            # Load the best model for evaluation
+            model.load_state_dict(torch.load(best_model_path))
 
-    model = gnn.GINClassification(in_channels=dataset[0].num_node_features, hidden_channels=1000, out_channels=100, num_classes=2)
-
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    criterion = nn.CrossEntropyLoss()
-
-    gnn.train_model(model, train_loader, test_loader, optimizer, criterion, num_epochs=num_epochs, model_save_path=f'models/{dataset_name}')
-
-    # Extract embeddings for test set
-    test_embeddings = utils.extract_embeddings(model, test_dataset)
-
-    # Collect true labels
-    true_labels = utils.collect_labels(test_loader)
-
-    # Predict labels for test set
-    predicted_labels = utils.predict_labels(model, test_loader)
-
-    # Plot t-SNE visualization with true and predicted labels
-    utils.visualize_embeddings(test_embeddings, true_labels, predicted_labels, model_save_path=f'models/{dataset_name}')
-    return model
-
-if __name__ == "__main__":
-    model_class = main()
+            # Convert log_data to DataFrame
+            log_df = pd.DataFrame(log_data)
+            log_df.to_csv(os.path.join(model_save_path, 'train_log.csv'), index=False)
