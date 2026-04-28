@@ -13,9 +13,6 @@ import torch.nn as nn
 from torch_geometric.nn import GCNConv, global_mean_pool, global_max_pool,GINConv
 from torch_geometric.utils import to_dense_adj, dense_to_sparse
 
-import os
-import random
-import matplotlib.pyplot as plt
 import networkx as nx
 import glob
 import gc
@@ -154,3 +151,4 @@ def make_convolution(in_channels, out_channels):
             # Convert log_data to DataFrame
             log_df = pd.DataFrame(log_data)
             log_df.to_csv(os.path.join(model_save_path, 'train_log.csv'), index=False)
+            
