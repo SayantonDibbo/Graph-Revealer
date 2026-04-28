@@ -254,3 +254,79 @@ def generate_graphs_for_labels(models, labels):
                     torch.cuda.empty_cache()
         
             return graphs
+
+def convert_generated_to_pyg(generated_graph):
+            pyg_data = []
+            for graph in generated_graph:
+                edge_index = graph['edge_index'].long()
+                x = graph['x'].float()
+
+                # Convert condition to graph label
+                condition = graph.get('y', None)
+                if condition is not None:
+                    y = torch.tensor([condition], dtype=torch.long)
+                else:
+                    y = None
+
+                data = Data(
+                    edge_index=edge_index,
+                    x=x,
+                    y=y
+                )
+                pyg_data.append(data)
+
+            return pyg_data
+
+def list_of_dicts_to_pyg(data_list):
+            pyg_graphs = []
+            for data_dict in data_list:
+                adj = data_dict['adj']
+                x = data_dict['features']
+                y = torch.tensor([data_dict['label']], dtype=torch.long)
+
+                # Convert adjacency matrix to edge_index
+                edge_index = adj.nonzero(as_tuple=False).t().contiguous()
+
+                pyg_graph = Data(x=x, edge_index=edge_index, y=y)
+                pyg_graphs.append(pyg_graph)
+
+            return pyg_graphs
+
+def visualize_graphs(original_graphs, generated_graphs, dataset_name, seed_value):
+            """
+            Visualize original and generated graphs in 2 rows and multiple columns,
+            and save the figure to a PDF named {dataset_name}_seed{seed_value}_graphs.pdf
+            """
+            num_graphs = len(original_graphs)
+
+            if num_graphs != len(generated_graphs):
+                raise ValueError("Original and generated graph lists must be the same length.")
+
+            # Create 2 rows, num_graphs columns
+            fig, axes = plt.subplots(2, num_graphs, figsize=(4*num_graphs, 8))
+            fig.suptitle(f"{dataset_name} - Seed {seed_value} Graph Comparison", fontsize=16)
+
+            for i in range(num_graphs):
+                # Convert to NetworkX
+                G_orig = to_networkx(original_graphs[i], to_undirected=True)
+                G_gen = to_networkx(generated_graphs[i], to_undirected=True)
+
+                # Plot original (row 0)
+                ax = axes[0, i] if num_graphs > 1 else axes[0]
+                nx.draw(G_orig, ax=ax, node_size=50, with_labels=False)
+                ax.set_title(f"Original {i+1}")
+
+                # Plot generated (row 1)
+                ax = axes[1, i] if num_graphs > 1 else axes[1]
+                nx.draw(G_gen, ax=ax, node_size=50, with_labels=False)
+                ax.set_title(f"Generated {i+1}")
+
+            plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+            # Save PDF dynamically
+            filename = f"{dataset_name}_seed{seed_value}_graphs.pdf"
+            plt.savefig(filename)
+            plt.close()
+            print(f"Saved {filename}")
+
+        
