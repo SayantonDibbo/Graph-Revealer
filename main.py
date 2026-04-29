@@ -1,332 +1,248 @@
+
+
 import os
+import gc
+import glob
+import argparse
 import random
-import torch
+
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-from sklearn.metrics import f1_score
-import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE
-import matplotlib.pyplot as plt
-import networkx as nx
+import torch
 import torch.nn as nn
-from torch_geometric.nn import GCNConv, global_mean_pool, global_max_pool,GINConv
-from torch_geometric.utils import to_dense_adj, dense_to_sparse
-
-import networkx as nx
-import glob
-import gc
-
-#from model import GINClassification
-#from utils import draw_random_graph_samples, train_model, extract_embeddings, collect_labels, predict_labels, visualize_embeddings
-
-from torch_geometric.utils import to_networkx
-import torch.optim as optim
-from torch_geometric.datasets import TUDataset
-from torch_geometric.data import DataLoader
-from torch_geometric.datasets import Planetoid, Airports
-
-
-from torch.utils.data import Dataset
-from sklearn.model_selection import train_test_split
 import torch.nn.functional as F
-#from torchvision import datasets, transforms
-from tqdm.notebook import tqdm
-from scipy import linalg
-from typing import List, Tuple, Optional
-from grakel import Graph
-import copy
-from grakel.kernels import WeisfeilerLehman, VertexHistogram
+import torch.optim as optim
+import matplotlib.pyplot as plt
+import networkx as nx
+
+from tqdm import tqdm
+from collections import Counter
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import f1_score
+from sklearn.manifold import TSNE
 from scipy.stats import wasserstein_distance
 
-from torch_geometric.nn import GCNConv, global_mean_pool
-from torch_geometric.data import Data, Batch
+from torch.utils.data import Dataset
+from torch_geometric.data import Data, DataLoader
+from torch_geometric.datasets import Planetoid, Airports
+from torch_geometric.nn import GCNConv, GINConv, global_mean_pool
+from torch_geometric.utils import to_dense_adj, to_networkx, k_hop_subgraph
 
 from grakel import Graph as GrakelGraph
-from torch_geometric.datasets import PolBlogs
+from grakel.kernels import WeisfeilerLehman, VertexHistogram
 
-from torch_geometric.utils import k_hop_subgraph
-from collections import Counter
+import config
+from src.metrics import metrics
 
+from src.utils import  utils
+from src.models.gnn import make_convolution, GINClassification
 
-import argparse
-import torch
-import os
-import random
-import numpy as np
+from train.train_target import train_gin
 
-from config import *
-
-# (Assume your existing imports: torch_geometric, sklearn, etc.)
-
-def set_seed(seed):
-    torch.manual_seed(seed)
-    random.seed(seed)
-    np.random.seed(seed)
-
-    if torch.backends.mps.is_available():
-        torch.mps.manual_seed(seed)
+from src.models.diffusion import GraphDiffusionNetwork, GraphDiffusionModel
+from train.train_diffusion import train_diffusion
+from src.metrics.metrics import GraphEncoder, compute_fgd_scores, compute_graph_distances_list, compute_structural_scores
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Graph Learning + Diffusion Pipeline")
-
-    parser.add_argument("--dataset", type=str, default=DATASET_NAME,
-                        choices=["Cora", "USA"], help="Dataset name")
-
-    parser.add_argument("--seed", type=int, default=DEFAULT_SEED,
-                        help="Random seed")
-
-    parser.add_argument("--batch_size", type=int, default=BATCH_SIZE)
-
-    parser.add_argument("--epochs", type=int, default=None,
-                        help="Override training epochs")
-
-    parser.add_argument("--mode", type=str, default="train",
-                        choices=["train", "generate"],
-                        help="Run mode")
-
-    return parser.parse_args()
 
 
-def prepare_dataset(args):
-    dataset_name = args.dataset
 
-    config = DATASET_CONFIG[dataset_name]
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="main.py",
+        description="LOGRA: Graph Generation via Laplace-noise Diffusion",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    num_epoch1 = config["num_epoch1"]
-    num_epoch2 = config["num_epoch2"]
-    classes = config["classes"]
-    max_node = config["max_node"]
+    # ── Experiment ──────────────────────────────────────────────────────────
+    p.add_argument("--experiment-type", default=config.EXPERIMENT_TYPE,
+                   help="Tag written into output filenames (e.g. proposed, baseline).")
+    p.add_argument("--summarise-only", action="store_true",
+                   help="Skip training; only aggregate existing CSV results.")
 
-    return num_epoch1, num_epoch2, classes, max_node
+    # ── Data ────────────────────────────────────────────────────────────────
+    p.add_argument("--dataset", choices=config.SUPPORTED_DATASETS,
+                   default="Cora",
+                   help="Dataset to use.")
+    p.add_argument("--data-root", default=config.DATA_ROOT,
+                   help="Root directory for raw dataset downloads.")
+    p.add_argument("--k-hop", type=int, default=config.K_HOP,
+                   help="Number of hops for k-hop subgraph extraction.")
+
+    # ── Seeds ────────────────────────────────────────────────────────────────
+    p.add_argument("--seeds", type=int, nargs="+", default=config.SEEDS,
+                   help="Random seeds to iterate over.")
+
+    # ── GIN Classifier ───────────────────────────────────────────────────────
+    p.add_argument("--gin-epochs", type=int, default=None,
+                   help="Override GIN training epochs (default from DATASET_CONFIG).")
+    p.add_argument("--gin-batch-size", type=int, default=config.GIN_BATCH_SIZE,
+                   help="Batch size for GIN training.")
+    p.add_argument("--load-gin", default=None, metavar="PATH",
+                   help="Path to a pre-trained GIN checkpoint (skips GIN training).")
+
+    # ── Diffusion model ───────────────────────────────────────────────────────
+    p.add_argument("--diff-epochs", type=int, default=None,
+                   help="Override diffusion training epochs (default from DATASET_CONFIG).")
+    p.add_argument("--diff-batch-size", type=int, default=config.DIFF_BATCH_SIZE,
+                   help="Batch size for diffusion training.")
+    p.add_argument("--diff-lr", type=float, default=config.DIFF_LR,
+                   help="Learning rate for the diffusion model.")
+    p.add_argument("--diff-timesteps", type=int, default=config.DIFF_NUM_TIMESTEPS,
+                   help="Number of diffusion timesteps.")
+    p.add_argument("--diff-epsilon", type=float, default=config.DIFF_EPSILON,
+                   help="Epsilon (scale) for the Laplace noise distribution.")
+
+    # ── Hardware ─────────────────────────────────────────────────────────────
+    p.add_argument("--cpu", action="store_true",
+                   help="Force CPU even when MPS/CUDA is available.")
+
+    return p
+
+
+def run_one(dataset_name: str, seed: int, args, device: torch.device):
+    cfg          = config.DATASET_CONFIG[dataset_name]
+    classes      = cfg["classes"]
+    MAX_NODE     = cfg["MAX_NODE"]
+    num_epoch1   = args.gin_epochs   if args.gin_epochs   else cfg["num_epoch1"]
+    num_epoch2   = args.diff_epochs  if args.diff_epochs  else cfg["num_epoch2"]
+    types        = args.experiment_type
+
+    print(f"\n{'='*70}")
+    print(f"  Dataset={dataset_name}  Seed={seed}  Type={types}")
+    print(f"{'='*70}")
+
+    # ── Build graph dataset ──────────────────────────────────────────────────
+    full_dataset = utils.node_to_graph_dataset(dataset_name, args.data_root, args.k_hop)
+    node_features = full_dataset[0].num_node_features
+
+    target_dataset, shadow_dataset = train_test_split(
+        full_dataset, test_size=config.SHADOW_SPLIT_RATIO,
+        random_state=config.SPLIT_RANDOM_STATE)
+    train_dataset, test_dataset = train_test_split(
+        target_dataset, test_size=config.TEST_SPLIT_RATIO,
+        random_state=config.SPLIT_RANDOM_STATE)
+
+    train_loader = DataLoader(train_dataset, batch_size=args.gin_batch_size, shuffle=True)
+    test_loader  = DataLoader(test_dataset,  shuffle=False)
+
+    # ── GIN Classifier ───────────────────────────────────────────────────────
+    model_save_path = os.path.join(config.MODELS_DIR, dataset_name)
+    gin_ckpt        = os.path.join(model_save_path, config.BEST_MODEL_FILENAME)
+
+    model_class = GINClassification(
+        in_channels=node_features,
+        hidden_channels=config.GIN_HIDDEN_CHANNELS,
+        out_channels=config.GIN_OUT_CHANNELS,
+        num_classes=classes)
+
+    if args.load_gin:
+        print(f"Loading pre-trained GIN from {args.load_gin}")
+        model_class.load_state_dict(torch.load(args.load_gin, map_location="cpu"))
+    else:
+        optimizer = optim.Adam(model_class.parameters(), lr=config.GIN_LR)
+        criterion = nn.CrossEntropyLoss()
+        model_class = train_gin(model_class, train_loader, test_loader,
+                                optimizer, criterion, num_epoch1, model_save_path)
+
+    # ── Collect shadow-set predictions → Total_data ───────────────────────
+    model_class.eval()
+    Total_data = []
+    for data in shadow_dataset:
+        data   = data.to("cpu")
+        logits = model_class(data.x, data.edge_index, None)
+        pred   = F.softmax(logits, dim=1).argmax(dim=1)
+        if data.y.item() == pred.item():
+            Total_data.append(data.cpu())
+        else:
+            data.y = pred
+            Total_data.append(data.cpu())
+
+    # ── Diffusion model ───────────────────────────────────────────────────
+    diff_dataset = utils.NCI1GraphDataset(Total_data, classes, max_nodes=MAX_NODE)
+    diff_loader  = DataLoader(diff_dataset, batch_size=args.diff_batch_size,
+                              shuffle=True, num_workers=0)
+
+    diff_model = GraphDiffusionModel(
+        max_nodes=MAX_NODE,
+        feature_dim=node_features,
+        num_classes=classes,
+        num_timesteps=args.diff_timesteps,
+        epsilon=args.diff_epsilon,
+        device=device)
+
+    train_diffusion(diff_model, diff_loader, num_epochs=num_epoch2, lr=args.diff_lr)
+
+    os.makedirs(config.MODELS_DIR, exist_ok=True)
+    torch.save(diff_model.state_dict(),
+               os.path.join(config.MODELS_DIR, config.BEST_MODEL_FILENAME))
+
+    # ── Generate graphs matching target labels ─────────────────────────────
+    model_class.eval()
+    labels = []
+    for data in target_dataset:
+        data = data.to("cpu")
+        out  = model_class(data.x, data.edge_index, None)
+        pred = out.argmax(dim=1)
+        data.y = pred
+        labels.append(pred.item())
+
+    generated_graphs = utils.generate_graphs_for_labels(diff_model, labels)
+    generated_graph  = utils.list_of_dicts_to_pyg(generated_graphs)
+    original_graph   = utils.target_dataset_to_pyg(target_dataset)
+
+    # ── FGD ───────────────────────────────────────────────────────────────
+    encoder  = metrics.GraphEncoder(node_features=node_features)
+    fgd_list, fgd_mean, fgd_std = compute_fgd_scores(
+        original_graph, generated_graph, encoder)
+    print(f"FGD  mean={fgd_mean:.4f}  std={fgd_std:.4f}")
+
+    # ── Graph distances ────────────────────────────────────────────────────
+    euclid_list, mmd_list, kernel_list, spectral_list = \
+        compute_graph_distances_list(original_graph, generated_graph, node_features)
+
+    distance_df = pd.DataFrame({
+        "fgd_mean":       fgd_list,
+        "euclidean_mean": euclid_list,
+        "mmd_mean":       mmd_list,
+        "kernel_mean":    kernel_list,
+        "spectral_mean":  spectral_list,
+    })
+    dist_file = f"{dataset_name}_{types}_seed{seed}.csv"
+    distance_df.to_csv(dist_file, index=False)
+    print(f"Saved → {dist_file}")
+
+    # ── Structural scores ──────────────────────────────────────────────────
+    deg_s, clust_s, bc_s, cc_s = compute_structural_scores(
+        original_graph, generated_graph)
+
+    structural_df = pd.DataFrame({
+        "degree_scores":     deg_s,
+        "clustering_scores": clust_s,
+        "bc_scores":         bc_s,
+        "cc_scores":         cc_s,
+    })
+    struct_file = f"structural_{dataset_name}_{types}_seed{seed}.csv"
+    structural_df.to_csv(struct_file, index=False)
+    print(f"Saved → {struct_file}")
 
 
 def main():
-    args = parse_args()
+    parser = build_parser()
+    args   = parser.parse_args()
 
-    print(f"Running with config: {args}")
+    if args.summarise_only:
+        utils.summarise_results(args.experiment_type, config.DATASET_PREFIXES)
+        return
 
-    # Set seed
-    set_seed(args.seed)
+    device = utils.get_device(force_cpu=args.cpu)
+    print(f"Using device: {device}")
 
-    # Dataset config
-    num_epoch1, num_epoch2, classes, max_node = prepare_dataset(args)
+    for seed in args.seeds:
+        utils.set_seed(seed)
+        run_one(args.dataset, seed, args, device)
 
-    # ======================
-    # DATA LOADING
-    # ======================
-    from your_module import node_to_graph_dataset  # adjust import
-
-    dataset = node_to_graph_dataset(
-        dataset_name=args.dataset,
-        root=ROOT_DIR,
-        k_hop=K_HOP
-    )
-
-    print(f"Loaded dataset: {args.dataset}, size={len(dataset)}")
-
-    # ======================
-    # TRAIN / GENERATE
-    # ======================
-    if args.mode == "train":
-
-        from your_module import train_pipeline  # wrap your logic
-
-        train_pipeline(
-            dataset=dataset,
-            batch_size=args.batch_size,
-            epochs=args.epochs or num_epoch1,
-            classes=classes,
-            max_node=max_node
-        )
-
-    elif args.mode == "generate":
-
-        from your_module import generation_pipeline
-
-        generation_pipeline(
-            dataset=dataset,
-            classes=classes,
-            max_node=max_node
-        )
+    utils.summarise_results(args.experiment_type, config.DATASET_PREFIXES)
 
 
 if __name__ == "__main__":
     main()
-
-
-
-
-generated_graph = list_of_dicts_to_pyg(generated_graphs)
-original_graph = convert_generated_to_pyg(target_dataset)
-
-
-
-
-
-
-
-
-
-
-
-
-# Distributional metrics----------------------------//////////////----------------------------------------////////////////
-def compute_graph_distances_list(
-    original_graph,
-    generated_graph,
-    encoder,
-    device="cpu"
-):
-    assert len(original_graph) == len(generated_graph), \
-        "Lists must be equal length."
-    encoder = GraphEncoder(node_features=node_features)
-    encoder = encoder.to(device)
-    encoder.eval()
-
-    # Lists for each metric
-    euclid_list = []
-    mmd_list = []
-    kernel_list = []
-    spectral_list = []
-
-    # List of dictionaries (per graph pair)
-    metrics_per_graph = []
-
-    for o_graph, g_graph in zip(original_graph, generated_graph):
-
-        o_graph = o_graph.to(device)
-        g_graph = g_graph.to(device)
-
-        # batch vectors
-        o_batch = torch.zeros(o_graph.x.size(0), dtype=torch.long, device=device)
-        g_batch = torch.zeros(g_graph.x.size(0), dtype=torch.long, device=device)
-
-        # Embeddings
-        with torch.no_grad():
-            emb_o = encoder(o_graph.x, o_graph.edge_index, o_batch).squeeze()
-            emb_g = encoder(g_graph.x, g_graph.edge_index, g_batch).squeeze()
-
-        # Metrics
-        euclid = euclidean_distance(emb_o, emb_g)
-        mmd = mmd_distance(emb_o, emb_g)
-        kernel = graph_kernel_similarity(o_graph, g_graph)
-        spectral = spectral_distance(o_graph, g_graph)
-
-        # Store
-        euclid_list.append(euclid)
-        mmd_list.append(mmd)
-        kernel_list.append(kernel)
-        spectral_list.append(spectral)
-
-        metrics_per_graph.append({
-            "euclidean_distance": euclid,
-            "mmd": mmd,
-            "graph_kernel_similarity": kernel,
-            "spectral_distance": spectral
-        })
-
-    # Summary statistics
-    summary = {
-        "euclidean_mean": float(np.mean(euclid_list)),
-        "euclidean_std": float(np.std(euclid_list)),
-
-        "mmd_mean": float(np.mean(mmd_list)),
-        "mmd_std": float(np.std(mmd_list)),
-
-        "kernel_mean": float(np.mean(kernel_list)),
-        "kernel_std": float(np.std(kernel_list)),
-
-        "spectral_mean": float(np.mean(spectral_list)),
-        "spectral_std": float(np.std(spectral_list)),
-    }
-
-    return metrics_per_graph, euclid_list, mmd_list, kernel_list, spectral_list, summary
-
-encoder = GraphEncoder(node_features=node_features)
-
-metrics_per_graph, euclid_list, mmd_list, kernel_list, spectral_list, summary = \
-    compute_graph_distances_list(
-        original_graph,
-        generated_graph,
-        encoder,
-        device="cpu"
-    )
-
-#print(metrics_per_graph)   # list of dictionaries (one per graph)
-summary = {
-"fgd_mean": float(np.mean(fgd_list)),
-"euclidean_mean": float(np.mean(euclid_list)),
-"mmd_mean": float(np.mean(mmd_list)),
-"kernel_mean": float(np.mean(kernel_list)),
-"spectral_mean": float(np.mean(spectral_list)),
-}
-
-print(summary)             # mean + std for all metrics
-
-summary = {
-"fgd_mean": fgd_list,
-"euclidean_mean": euclid_list,
-"mmd_mean": mmd_list,
-"kernel_mean": kernel_list,
-"spectral_mean": spectral_list,
-}
-    
-
-# Convert to DataFrame
-df = pd.DataFrame(summary)
-
-# Create filename with dataset name and seed value
-filename = f"{dataset_name}_{types}_seed{seed}.csv"
-
-# Save to CSV
-df.to_csv(filename, index=False)
-
-print(f"CSV saved as {filename}")
-
-  
-
-
-# STRUCTURAL METRICS----------------------------//////////////----------------------------------------////////////////
-degree_scores      = []
-clustering_scores  = []   
-bc_scores          = []
-cc_scores          = []
-
-for G_orig, G_gen in zip(original_graph, generated_graph):
-    G_orig = ensure_nx(G_orig)
-    G_gen  = ensure_nx(G_gen)
-
-    degree_scores.append(similarity_score(
-        degree_distribution(G_orig),
-        degree_distribution(G_gen)
-    ))
-    clustering_scores.append(similarity_score(
-        clustering_coeff_distribution(G_orig),
-        clustering_coeff_distribution(G_gen)
-    ))
-    bc_scores.append(similarity_score(
-        bc_distribution(G_orig),
-        bc_distribution(G_gen)
-    ))
-    cc_scores.append(similarity_score(
-        cc_distribution(G_orig),
-        cc_distribution(G_gen)
-    ))
-
-structural = {
-    "degree_scores":     degree_scores,
-    "clustering_scores": clustering_scores,   # renamed from lcc_scores
-    "bc_scores":         bc_scores,
-    "cc_scores":         cc_scores,
-}
-df = pd.DataFrame(structural)
-
-# Create filename with dataset name and seed value
-filename = f"structural_{dataset_name}_{types}_seed{seed}.csv"
-
-# Save to CSV
-df.to_csv(filename, index=False)
-
-print(f"CSV saved as {filename}")

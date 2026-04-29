@@ -1,0 +1,20 @@
+Metric Summary (Mean ± Std)
+==================================================
+
+Dataset: Cor  |  Distance metrics
+                    Mean       Std
+fgd_mean        0.703098  0.194511
+euclidean_mean  0.868289  0.118177
+mmd_mean        0.630242  0.139545
+kernel_mean     0.550960  1.768873
+spectral_mean   3.053669  1.289621
+
+Dataset: Cor  |  Structural metrics
+                        Mean        Std
+degree_scores      74.310943  16.107247
+clustering_scores  69.503118  10.954075
+bc_scores          86.115785   8.630526
+cc_scores          69.400388  18.347154
+
+--------------------------------------------------
+

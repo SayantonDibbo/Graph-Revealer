@@ -47,334 +47,177 @@ from torch_geometric.datasets import PolBlogs
 
 from torch_geometric.utils import k_hop_subgraph
 from collections import Counter
+import argparse
+import config
 
 
+# set seed for reproducibility
+def set_seed(seed: int):
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
 
 
-def load_nci1():
-    NCI1 = TUDataset(root=f'data/NCI1', name='NCI1', use_node_attr=True)
-    return
+# set device
+def get_device(force_cpu: bool = False) -> torch.device:
+    if force_cpu:
+        return torch.device("cpu")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
+ 
 
-def load_polblogs():
-    PolBlogs_data = PolBlogs(root="data/PolBlogs")
-    Blogs = PolBlogs_data[0]
-    def build_polblogs_dataset(data,
-                           num_samples=1500,
-                           k=2,
-                           min_nodes=20,
-                           max_nodes=40):
-
-        graphs = []
-        num_nodes = data.num_nodes
-
-        while len(graphs) < num_samples:
-
-            center = random.randint(0, num_nodes - 1)
-
-            subset, edge_index, mapping, edge_mask = k_hop_subgraph(
-                center,
-                k,
-                data.edge_index,
-                relabel_nodes=True
-            )
-
-            n = subset.size(0)
-
-            if n < min_nodes or n > max_nodes:
-                continue
-
-            node_labels = data.y[subset]
-
-            # Node features = one-hot labels
-            x = F.one_hot(node_labels, num_classes=2).float()
-
-            # Graph label = majority vote
-            graph_label = torch.mode(node_labels).values.unsqueeze(0)
-
-            graph = Data(
-                x=x,
-                edge_index=edge_index,
-                y=graph_label
-            )
-
-            graphs.append(graph)
-        return graphs
-    PolBlogss = build_polblogs_dataset(Blogs, num_samples=1500)
-    return PolBlogss
-
-def load_enzymes():
-    ENZYMES = TUDataset(root="data/TUDataset", name="ENZYMES")
-    return ENZYMES
-
-def load_cora(dataset_name="Cora", root="data", k_hop=2):
-
+def node_to_graph_dataset(dataset_name: str, root: str, k_hop: int):
     if dataset_name.lower() == "cora":
-        dataset = Planetoid(root=root, name="Cora")
-        
+        raw = Planetoid(root=root, name="Cora")
+    elif dataset_name.lower() == "usa":
+        raw = Airports(root=root, name="USA")
     else:
-        raise ValueError("Unsupported dataset. Choose 'Cora' or 'USA'.")
-
-    data = dataset[0]
+        raise ValueError(f"Unsupported dataset '{dataset_name}'. Choose from {config.SUPPORTED_DATASETS}.")
+ 
+    data = raw[0]
     graphs = []
-
-    num_nodes = data.num_nodes
-
-    for node_idx in range(num_nodes):
-
-        # ---- Extract k-hop subgraph ----
-        subset, sub_edge_index, _, sub_mapping = k_hop_subgraph(
+ 
+    for node_idx in range(data.num_nodes):
+        subset, sub_edge_index, _, _ = k_hop_subgraph(
             node_idx,
             num_hops=k_hop,
             edge_index=data.edge_index,
-            relabel_nodes=True
+            relabel_nodes=True,
         )
-
-        # ✅ INSERT HERE (CRITICAL)
         if sub_edge_index.size(1) == 0:
-            continue   # skip empty graphs
-
-        # ---- Node features ----
+            continue
         x_sub = data.x[subset]
-
-        # ---- Graph label ----
         node_labels = data.y[subset]
         majority_label = Counter(node_labels.tolist()).most_common(1)[0][0]
         y_graph = torch.tensor([majority_label], dtype=torch.long)
-
-        # ---- Create Data object ----
         graphs.append(Data(x=x_sub, edge_index=sub_edge_index, y=y_graph))
-
+ 
     return graphs
 
-def split_data(dataset):
-    target_dataset, shadow_dataset = train_test_split(dataset, test_size=0.5, random_state=42)
 
-    train_dataset, test_dataset = train_test_split(target_dataset, test_size=0.2, random_state=42)
+class NCI1GraphDataset(Dataset):
+    def __init__(self, data, classes, max_nodes):
+        print("Preparing graph dataset …")
+        self.datasets  = data
+        self.max_nodes = max_nodes
+        self.num_classes = classes
+ 
+        self.valid_data = []
+        for d in self.datasets:
+            if (d.x is not None and d.x.shape[1] > 0
+                    and config.MIN_NODES <= d.num_nodes <= max_nodes
+                    and d.edge_index.shape[1] > 0):
+                avg_degree = d.edge_index.shape[1] / d.num_nodes
+                if avg_degree <= config.MAX_AVG_DEGREE:
+                    self.valid_data.append(d)
+ 
+        all_features     = torch.cat([d.x for d in self.valid_data], dim=0)
+        self.feat_mean   = all_features.mean(dim=0, keepdim=True)
+        self.feat_std    = all_features.std(dim=0,  keepdim=True) + 1e-8
+        self.feature_dim = self.valid_data[0].x.shape[1]
+ 
+        self.class_stats = {}
+        for label in range(self.num_classes):
+            cg = [d for d in self.valid_data if d.y.item() == label]
+            if not cg:
+                self.class_stats[label] = {"avg_nodes": 0, "avg_edges": 0, "count": 0}
+                continue
+            self.class_stats[label] = {
+                "avg_nodes": int(np.mean([d.num_nodes for d in cg])),
+                "avg_edges": int(np.mean([d.edge_index.shape[1] / 2 for d in cg])),
+                "count":     len(cg),
+            }
+ 
+        print(f"  Valid graphs : {len(self.valid_data)}")
+        print(f"  Feature dim  : {self.feature_dim}")
+        for lbl, st in self.class_stats.items():
+            print(f"  Class {lbl}: {st['count']} graphs, "
+                  f"avg {st['avg_nodes']} nodes, {st['avg_edges']} edges")
+ 
+    def __len__(self):
+        return len(self.valid_data)
+ 
+    def __getitem__(self, idx):
+        d             = self.valid_data[idx]
+        features_norm = (d.x - self.feat_mean) / self.feat_std
+        adj           = to_dense_adj(d.edge_index, max_num_nodes=self.max_nodes)[0]
+        features      = torch.zeros(self.max_nodes, self.feature_dim)
+        features[:d.num_nodes] = features_norm
+        mask          = torch.zeros(self.max_nodes)
+        mask[:d.num_nodes] = 1
+        return adj, features, d.y.item(), mask
+    
 
-    return train_dataset, test_dataset, shadow_dataset, target_dataset
+def generate_graphs_for_labels(model, labels):
+    graphs = []
+    print(f"\nGenerating {len(labels)} graphs …")
+    for i, label in enumerate(tqdm(labels)):
+        adj, feat = model.sample(label)
+        graphs.append({"adj": adj, "features": feat, "label": label})
+        if (i + 1) % config.GC_FLUSH_EVERY == 0:
+            gc.collect()
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+    return graphs
 
-
-def draw_random_graph_samples(dataset, dataset_name, num_classes, num_samples=20, model_save_path='models/'):
-    num_rows = 4
-    num_cols = 5
-    fig, axs = plt.subplots(num_rows, num_cols, figsize=(5*num_cols, 5*num_rows))
-    fig.suptitle('Random Samples of Graphs')
-
-    # Define a colormap based on the number of unique classes
-    cmap = plt.cm.get_cmap('tab10', num_classes)
-
-    # Get random indices for sampling
-    random_indices = random.sample(range(len(dataset)), num_samples)
-
-    for i, index in enumerate(random_indices):
-        row = i // num_cols
-        col = i % num_cols
-
-        data = dataset[index]
-        edge_index, y = data.edge_index, data.y
-        G = nx.Graph()
-        for src, dst in edge_index.t().tolist():
-            G.add_edge(src, dst)
-
-        # Map class labels to colors
-        nodes_color = cmap(y[0])
-
-        pos = nx.spring_layout(G)  # Positions for all nodes
-        nx.draw(G, pos, with_labels=True, node_color=nodes_color, node_size=100, edge_color='k', linewidths=1, font_size=5, ax=axs[row, col])
-        axs[row, col].set_title(f'Graph Sample {index}')
-
-    # Custom legend for class labels
-    handles = [plt.Line2D([], [], color=cmap(i), marker='o', linestyle='', markersize=10, label=f'Class {i}') for i in range(num_classes)]
-    plt.legend(handles=handles, title='Class Labels', loc='center left', bbox_to_anchor=(1, 0.5))
-
-    # Save the plot
-    plt.savefig(os.path.join(model_save_path, f'{dataset_name}/random_samples_of_graphs.png'))
-
-
-
-    def extract_embeddings(model, dataset):
-        model.eval()
-        embeddings_list = []
-        for data in dataset:
-            x, edge_index = data.x, data.edge_index
-            with torch.no_grad():
-                embedding = model.extract_embedding(x, edge_index, data.batch)
-            embeddings_list.append(embedding.numpy())
-        embeddings_all = np.concatenate(embeddings_list)
-        return embeddings_all
-
-    def predict_labels(model, test_loader):
-        predicted_labels = []
-        model.eval()
-        with torch.no_grad():
-            for data in test_loader:
-                x, edge_index, _ = data.x, data.edge_index, data.batch
-                out = model(x, edge_index, data.batch)
-                _, predicted = torch.max(out, 1)
-                predicted_labels.extend(predicted.numpy())
-        return predicted_labels
-
-    def collect_labels(loader):
-        # Get true labels for test set
-        true_labels = []
-        for data in loader:
-            true_labels.append(data.y.numpy())
-        true_labels = np.concatenate(true_labels)
-        return true_labels
-
-    def visualize_embeddings(embeddings, true_labels, predicted_labels, model_save_path):
-        tsne = TSNE(n_components=2)
-        embeddings_tsne = tsne.fit_transform(embeddings)
-
-        fig, axs = plt.subplots(1, 2, figsize=(12, 6))
-        fig.suptitle('t-SNE Visualization of Embeddings')
-
-        for ax, labels, title in zip(axs, [true_labels, predicted_labels], ['True Labels', 'Predicted Labels']):
-            for label in np.unique(labels):
-                indices = np.where(labels == label)
-                ax.scatter(embeddings_tsne[indices, 0], embeddings_tsne[indices, 1], label=f'Class {label}')
-            ax.set_title(title)
-            ax.set_xlabel('t-SNE Dimension 1')
-            ax.set_ylabel('t-SNE Dimension 2')
-            ax.legend()
-            ax.grid(True)
-
-        plt.savefig(os.path.join(model_save_path, 'test_embedding_with_labels.png'))
-
-def generate_graphs_for_labels(models, labels):
-            """Generate graphs for list of labels"""
-            graphs = []
-            print(f"\nGenerating {len(labels)} graphs...")
-        
-            for i, label in enumerate(tqdm(labels)):
-                adj, feat = gan.sample(label)
-                graphs.append({'adj': adj, 'features': feat, 'label': label})
-        
-                if (i + 1) % 5 == 0:
-                    torch.cuda.empty_cache()
-        
-            return graphs
-
-def convert_generated_to_pyg(generated_graph):
-            pyg_data = []
-            for graph in generated_graph:
-                edge_index = graph['edge_index'].long()
-                x = graph['x'].float()
-
-                # Convert condition to graph label
-                condition = graph.get('y', None)
-                if condition is not None:
-                    y = torch.tensor([condition], dtype=torch.long)
-                else:
-                    y = None
-
-                data = Data(
-                    edge_index=edge_index,
-                    x=x,
-                    y=y
-                )
-                pyg_data.append(data)
-
-            return pyg_data
 
 def list_of_dicts_to_pyg(data_list):
-            pyg_graphs = []
-            for data_dict in data_list:
-                adj = data_dict['adj']
-                x = data_dict['features']
-                y = torch.tensor([data_dict['label']], dtype=torch.long)
+    pyg = []
+    for d in data_list:
+        edge_index = d["adj"].nonzero(as_tuple=False).t().contiguous()
+        pyg.append(Data(
+            x=d["features"],
+            edge_index=edge_index,
+            y=torch.tensor([d["label"]], dtype=torch.long)))
+    return pyg
 
-                # Convert adjacency matrix to edge_index
-                edge_index = adj.nonzero(as_tuple=False).t().contiguous()
 
-                pyg_graph = Data(x=x, edge_index=edge_index, y=y)
-                pyg_graphs.append(pyg_graph)
+def target_dataset_to_pyg(target_dataset):
+    """Wrap plain PyG Data objects so both lists share the same type."""
+    out = []
+    for d in target_dataset:
+        out.append(Data(edge_index=d.edge_index, x=d.x.float(), y=d.y))
+    return out
 
-            return pyg_graphs
 
-def visualize_graphs(original_graphs, generated_graphs, dataset_name, seed_value):
-            """
-            Visualize original and generated graphs in 2 rows and multiple columns,
-            and save the figure to a PDF named {dataset_name}_seed{seed_value}_graphs.pdf
-            """
-            num_graphs = len(original_graphs)
 
-            if num_graphs != len(generated_graphs):
-                raise ValueError("Original and generated graph lists must be the same length.")
-
-            # Create 2 rows, num_graphs columns
-            fig, axes = plt.subplots(2, num_graphs, figsize=(4*num_graphs, 8))
-            fig.suptitle(f"{dataset_name} - Seed {seed_value} Graph Comparison", fontsize=16)
-
-            for i in range(num_graphs):
-                # Convert to NetworkX
-                G_orig = to_networkx(original_graphs[i], to_undirected=True)
-                G_gen = to_networkx(generated_graphs[i], to_undirected=True)
-
-                # Plot original (row 0)
-                ax = axes[0, i] if num_graphs > 1 else axes[0]
-                nx.draw(G_orig, ax=ax, node_size=50, with_labels=False)
-                ax.set_title(f"Original {i+1}")
-
-                # Plot generated (row 1)
-                ax = axes[1, i] if num_graphs > 1 else axes[1]
-                nx.draw(G_gen, ax=ax, node_size=50, with_labels=False)
-                ax.set_title(f"Generated {i+1}")
-
-            plt.tight_layout(rect=[0, 0, 1, 0.95])
-
-            # Save PDF dynamically
-            filename = f"{dataset_name}_seed{seed_value}_graphs.pdf"
-            plt.savefig(filename)
-            plt.close()
-            print(f"Saved {filename}")
-
-def save_metrics_data():      
-    prefixes = ["Cor"]
+def summarise_results(experiment_type, prefixes):
     files = glob.glob("*.csv")
-
-    with open(f'{types}_metrics_summary.txt', "w") as out_file:
-        out_file.write("Metric Summary (Mean and Std)\n")
-        out_file.write("="*50 + "\n\n")
-
+    out_path = f"{config.RESULT_DIR}/{experiment_type}_metrics_summary.txt"
+    with open(out_path, "w") as fh:
+        fh.write("Metric Summary (Mean ± Std)\n")
+        fh.write("=" * 50 + "\n\n")
         for prefix in prefixes:
+            for group_label, selector in [
+                ("Distance metrics",  lambda f, p: os.path.basename(f)[:3] == p),
+                ("Structural metrics", lambda f, p: os.path.basename(f)[11:14] == p),
+            ]:
+                matched = [f for f in files if selector(f, prefix)]
+                if not matched:
+                    continue
+                combined = pd.concat([pd.read_csv(f) for f in matched], ignore_index=True)
+                summary  = pd.DataFrame({"Mean": combined.mean(numeric_only=True),
+                                          "Std":  combined.std(numeric_only=True)})
+                fh.write(f"Dataset: {prefix}  |  {group_label}\n")
+                fh.write(summary.to_string())
+                fh.write("\n\n")
+            fh.write("-" * 50 + "\n\n")
+    print(f"Results saved → {out_path}")
 
-            # --- First metric group (position 0:4) ---
-            files_group1 = [
-                file for file in files if os.path.basename(file)[:3] == prefix
-            ]
 
-            if len(files_group1) > 0:
-                dfs1 = [pd.read_csv(file) for file in files_group1]
-                combined1 = pd.concat(dfs1, ignore_index=True)
 
-                mean1 = combined1.mean(numeric_only=True)
-                std1 = combined1.std(numeric_only=True)
 
-                summary1 = pd.DataFrame({"Mean": mean1, "Std": std1})
 
-                out_file.write(f"Dataset: {prefix} (Metric Set 1)\n")
-                out_file.write(summary1.to_string())
-                out_file.write("\n\n")
 
-            # --- Second metric group (position 12:16) ---
-            files_group2 = [
-                file for file in files if os.path.basename(file)[11:14] == prefix
-            ]
 
-            if len(files_group2) > 0:
-                dfs2 = [pd.read_csv(file) for file in files_group2]
-                combined2 = pd.concat(dfs2, ignore_index=True)
 
-                mean2 = combined2.mean(numeric_only=True)
-                std2 = combined2.std(numeric_only=True)
 
-                summary2 = pd.DataFrame({"Mean": mean2, "Std": std2})
 
-                out_file.write(f"Dataset: {prefix} (Metric Set 2)\n")
-                out_file.write(summary2.to_string())
-                out_file.write("\n\n")
 
-            out_file.write("-"*50 + "\n\n")
 
-    print("Results saved to metrics_summary.txt")
+

@@ -48,69 +48,60 @@ from torch_geometric.datasets import PolBlogs
 from torch_geometric.utils import k_hop_subgraph
 from collections import Counter
 
+from src.models.gnn import make_convolution, GINClassification
+## need model here and parameters
+import config
 
-def train_model(model, train_loader, test_loader, optimizer, criterion, num_epochs=1000, model_save_path='models/'):
-            best_model_path = os.path.join(model_save_path, 'best_model.pth')
-            best_test_accuracy = 0.0
-            best_f1 = 0.0
+def train_gin(model, train_loader, test_loader, optimizer, criterion,
+              num_epochs, model_save_path):
+    os.makedirs(model_save_path, exist_ok=True)
+    best_model_path  = os.path.join(model_save_path, config.BEST_MODEL_FILENAME)
+    best_accuracy    = 0.0
+    best_f1          = 0.0
+    log_data         = {"Epoch": [], "Average Loss": [], "Test Accuracy": [], "F1 Score": []}
 
-            log_data = {'Epoch': [], 'Average Loss': [], 'Test Accuracy': [], 'F1 Score': []}
+    for epoch in tqdm(range(num_epochs), desc="Training GIN"):
+        model.train()
+        total_loss, total_samples = 0.0, 0
+        for batch in train_loader:
+            x, edge_index, y = batch.x, batch.edge_index, batch.y
+            optimizer.zero_grad()
+            out  = model(x, edge_index, batch.batch)
+            loss = criterion(out, y)
+            loss.backward()
+            optimizer.step()
+            total_loss    += loss.item() * batch.num_graphs
+            total_samples += batch.num_graphs
 
-            for epoch in tqdm(range(num_epochs), desc='Training'):
-                total_loss = 0
-                total_samples = 0
+        avg_loss = total_loss / total_samples
 
-                # Training loop
-                model.train()
-                for data in train_loader:
-                    x, edge_index, y = data.x, data.edge_index, data.y
-                    optimizer.zero_grad()
-                    out = model(x, edge_index, data.batch)
-                    loss = criterion(out, y)
-                    loss.backward()
-                    optimizer.step()
-                    total_loss += loss.item() * data.num_graphs
-                    total_samples += data.num_graphs
+        model.eval()
+        correct, total, true_labels, pred_labels = 0, 0, [], []
+        with torch.no_grad():
+            for batch in test_loader:
+                out       = model(batch.x, batch.edge_index, batch.batch)
+                predicted = out.argmax(dim=1)
+                total    += batch.y.size(0)
+                correct  += (predicted == batch.y).sum().item()
+                true_labels.extend(batch.y.numpy())
+                pred_labels.extend(predicted.numpy())
 
-                avg_loss = total_loss / total_samples
+        acc = correct / total
+        f1  = f1_score(true_labels, pred_labels, average="weighted")
+        tqdm.write(f"Epoch [{epoch+1}/{num_epochs}]  loss={avg_loss:.5f}  "
+                   f"acc={acc:.5f}  f1={f1:.5f}")
 
-                # Test loop
-                model.eval()
-                correct = 0
-                total = 0
-                true_labels = []
-                predicted_labels = []
-                with torch.no_grad():
-                    for data in test_loader:
-                        x, edge_index, y = data.x, data.edge_index, data.y
-                        out = model(x, edge_index, data.batch)
-                        _, predicted = torch.max(out, 1)
-                        total += y.size(0)
-                        correct += (predicted == y).sum().item()
-                        true_labels.extend(y.numpy())
-                        predicted_labels.extend(predicted.numpy())
+        log_data["Epoch"].append(epoch + 1)
+        log_data["Average Loss"].append(avg_loss)
+        log_data["Test Accuracy"].append(acc)
+        log_data["F1 Score"].append(f1)
 
-                test_accuracy = correct / total
-                f1 = f1_score(true_labels, predicted_labels, average='weighted')
-                tqdm.write(f'Epoch [{epoch + 1}/{num_epochs}], Average Loss: {avg_loss:.5f}, Test Accuracy: {test_accuracy:.5f}, F1 Score: {f1:.5f}')
+        if acc > best_accuracy or (acc == best_accuracy and f1 > best_f1):
+            tqdm.write("  ↳ best model saved")
+            best_accuracy, best_f1 = acc, f1
+            torch.save(model.state_dict(), best_model_path)
 
-                # Log data
-                log_data['Epoch'].append(epoch + 1)
-                log_data['Average Loss'].append(avg_loss)
-                log_data['Test Accuracy'].append(test_accuracy)
-                log_data['F1 Score'].append(f1)
-
-                # Save the best model based on test accuracy and F1-score
-                if test_accuracy > best_test_accuracy or (test_accuracy == best_test_accuracy and best_f1 < f1):
-                    tqdm.write("$$$ best model is updated according to accuracy! $$$")
-                    best_test_accuracy = test_accuracy
-                    best_f1 = f1
-                    os.makedirs(model_save_path, exist_ok=True)
-                    torch.save(model.state_dict(), best_model_path)
-
-            # Load the best model for evaluation
-            model.load_state_dict(torch.load(best_model_path))
-
-            # Convert log_data to DataFrame
-            log_df = pd.DataFrame(log_data)
-            log_df.to_csv(os.path.join(model_save_path, 'train_log.csv'), index=False)
+    model.load_state_dict(torch.load(best_model_path))
+    pd.DataFrame(log_data).to_csv(
+        os.path.join(model_save_path, config.TRAIN_LOG_FILENAME), index=False)
+    return model

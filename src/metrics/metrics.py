@@ -2,6 +2,7 @@
 import os
 import random
 import torch
+import argparse
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -57,12 +58,15 @@ print(f"Using device: {device}")
 
 from scipy.stats import wasserstein_distance
 from scipy.spatial.distance import jensenshannon
-from scipy.stats import gaussian_kde    
+from scipy.stats import gaussian_kde   
+
+import config
 
 #from src.models.gnn import GraphEncoder
-
 class GraphEncoder(nn.Module):
-    def __init__(self, node_features, hidden_dim=256, embedding_dim=128):
+    def __init__(self, node_features,
+                 hidden_dim=config.ENCODER_HIDDEN_DIM,
+                 embedding_dim=config.ENCODER_EMBED_DIM):
         super().__init__()
         self.conv1 = GCNConv(node_features, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, hidden_dim)
@@ -74,199 +78,133 @@ class GraphEncoder(nn.Module):
         h = F.relu(self.norm1(self.conv1(x, edge_index)))
         h = F.relu(self.norm2(self.conv2(h, edge_index)))
         h = self.conv3(h, edge_index)
-        graph_embedding = global_mean_pool(h, batch)
-        return graph_embedding
+        return global_mean_pool(h, batch)
 
-# take in original_graph and generated_graph 
-encoder = GraphEncoder(node_features=node_features)
-     
 def compute_mean_and_cov(embeddings):
-    """
-    embeddings: Tensor [1, D] or [N, D]
-    """
     if embeddings.dim() == 1:
         embeddings = embeddings.unsqueeze(0)
-
     mean = embeddings.mean(dim=0)
     diff = embeddings - mean
-
     if embeddings.size(0) == 1:
         cov = torch.eye(embeddings.size(1), device=embeddings.device) * 1e-3
     else:
         cov = diff.t().mm(diff) / (embeddings.size(0) - 1 + 1e-8)
-
     return mean, cov
 
 
-def frechet_distance(mu1, cov1, mu2, cov2, eps=1e-6):
+def frechet_distance(mu1, cov1, mu2, cov2, eps=config.ENCODER_EPS):
     diff = mu1 - mu2
-
-    cov1 = cov1 + torch.eye(cov1.size(0), device=cov1.device) * eps
-    cov2 = cov2 + torch.eye(cov2.size(0), device=cov2.device) * eps
-
+    c1   = cov1 + torch.eye(cov1.size(0), device=cov1.device) * eps
+    c2   = cov2 + torch.eye(cov2.size(0), device=cov2.device) * eps
     try:
-        cov_prod = (cov1 @ cov2).float()
-        sqrt_cov_prod = torch.linalg.cholesky(cov_prod)
+        sqrt_cp = torch.linalg.cholesky((c1 @ c2).float())
     except RuntimeError:
-        sqrt_cov_prod = torch.eye(cov1.size(0), device=cov1.device) * eps
+        sqrt_cp = torch.eye(c1.size(0), device=c1.device) * eps
+    return (diff.dot(diff) + torch.trace(c1 + c2 - 2 * sqrt_cp)).item()
 
-    fd = diff.dot(diff) + torch.trace(cov1 + cov2 - 2 * sqrt_cov_prod)
-    return fd.item()
 
-# Frechet Graph Distance (FGD)
 def compute_fgd_scores(original_graphs, generated_graphs, encoder, device="cpu"):
-    """
-    original_graphs: list of PyG Data objects
-    generated_graphs: list of PyG Data objects
-    encoder: GraphEncoder
-    """
-
-    assert len(original_graphs) == len(generated_graphs), \
-        "Number of original and generated graphs must match."
-
-    encoder = encoder.to(device)
-    encoder.eval()
-
-    fgd_scores = []
-
-    for o_graph, g_graph in zip(original_graphs, generated_graphs):
-
-        # Move graphs to device
-        o_graph = o_graph.to(device)
-        g_graph = g_graph.to(device)
-
-        # Build batch vectors manually (each graph = batch=0)
-        o_batch = torch.zeros(o_graph.x.size(0), dtype=torch.long, device=device)
-        g_batch = torch.zeros(g_graph.x.size(0), dtype=torch.long, device=device)
-
-        # Encode embeddings
+    assert len(original_graphs) == len(generated_graphs)
+    encoder = encoder.to(device); encoder.eval()
+    scores  = []
+    for og, gg in zip(original_graphs, generated_graphs):
+        og = og.to(device); gg = gg.to(device)
+        ob = torch.zeros(og.x.size(0), dtype=torch.long, device=device)
+        gb = torch.zeros(gg.x.size(0), dtype=torch.long, device=device)
         with torch.no_grad():
-            o_emb = encoder(o_graph.x, o_graph.edge_index, o_batch)
-            g_emb = encoder(g_graph.x, g_graph.edge_index, g_batch)
-
-        # Compute stats
-        mu1, cov1 = compute_mean_and_cov(o_emb)
-        mu2, cov2 = compute_mean_and_cov(g_emb)
-
-        # FGD per graph-pair
-        fgd = frechet_distance(mu1, cov1, mu2, cov2)
-        fgd_scores.append(fgd)
-
-    # Stats
-    fgd_mean = float(np.mean(fgd_scores))
-    fgd_std = float(np.std(fgd_scores))
-
-    return fgd_scores, fgd_mean, fgd_std
+            oe = encoder(og.x, og.edge_index, ob)
+            ge = encoder(gg.x, gg.edge_index, gb)
+        mu1, c1 = compute_mean_and_cov(oe)
+        mu2, c2 = compute_mean_and_cov(ge)
+        scores.append(frechet_distance(mu1, c1, mu2, c2))
+    return scores, float(np.mean(scores)), float(np.std(scores))
 
 
-# Convert PyG Data → GraKeL Graph
-def pyg_to_grakel_graph(data):
+def pyg_to_grakel(data):
     if data.edge_index.size(1) == 0:
         return None
     G_nx = to_networkx(data, to_undirected=True)
-
-    # Simple node labeling: argmax of feature vector
     node_labels = {
         n: int(data.x[n].argmax()) if data.x.size(1) > 1 else 0
-        for n in G_nx.nodes()
-    }
-    edges = list(G_nx.edges())
-
-    return GrakelGraph(edges, node_labels=node_labels)
+        for n in G_nx.nodes()}
+    return GrakelGraph(list(G_nx.edges()), node_labels=node_labels)
 
 
-
-# Euclidean Distance (embeddings)
-
-emb1 = original_graph
-emb2 = generated_graph
-def euclidean_distance(emb1, emb2):
-    return float(torch.norm(emb1 - emb2, p=2))
+def euclidean_distance(e1, e2):
+    return float(torch.norm(e1 - e2, p=2))
 
 
+def mmd_distance(e1, e2, sigma=1.0):
+    def k(x, y): return torch.exp(-torch.norm(x - y, p=2) ** 2 / (2 * sigma ** 2))
+    return float(k(e1, e1) + k(e2, e2) - 2 * k(e1, e2))
 
-# Maximum Mean Discrepancy (MMD)
 
-def mmd_distance(emb1, emb2, sigma=1.0):
-    def gaussian_kernel(x, y, sig):
-        return torch.exp(-torch.norm(x - y, p=2)**2 / (2 * sig**2))
-
-    return float(
-        gaussian_kernel(emb1, emb1, sigma)
-        + gaussian_kernel(emb2, emb2, sigma)
-        - 2 * gaussian_kernel(emb1, emb2, sigma)
-    )
-
-# Graph Kernel Similarity (WL)
-def graph_kernel_similarity(original_graph, generated_graph, h=2):
-    g1 = pyg_to_grakel_graph(original_graph)
-    g2 = pyg_to_grakel_graph(generated_graph)
-
-    wl_kernel = WeisfeilerLehman(n_iter=h, base_graph_kernel=VertexHistogram)
-    K = wl_kernel.fit_transform([g1, g2])
-
+def graph_kernel_similarity(og, gg, h=config.WL_ITERATIONS):
+    g1, g2 = pyg_to_grakel(og), pyg_to_grakel(gg)
+    if g1 is None or g2 is None:
+        return 0.0
+    K = WeisfeilerLehman(n_iter=h, base_graph_kernel=VertexHistogram).fit_transform([g1, g2])
     return float(K[0, 1])
 
-# Spectral Distance (Laplacian)
-def spectral_distance(original_graph, generated_graph, k=20):
-    def laplacian_spectrum(data, k):
+
+def spectral_distance(og, gg, k=config.SPECTRAL_K):
+    def spectrum(data):
         G = to_networkx(data, to_undirected=True)
         L = nx.normalized_laplacian_matrix(G).todense()
-        eigvals = np.sort(np.real(np.linalg.eigvals(L)))
-        if len(eigvals) >= k:
-            return eigvals[:k]
-        return np.pad(eigvals, (0, k - len(eigvals)))
+        ev = np.sort(np.real(np.linalg.eigvals(L)))
+        return ev[:k] if len(ev) >= k else np.pad(ev, (0, k - len(ev)))
+    return float(np.linalg.norm(spectrum(og) - spectrum(gg)))
 
-    s1 = laplacian_spectrum(original_graph, k)
-    s2 = laplacian_spectrum(generated_graph, k)
-    return float(np.linalg.norm(s1 - s2))
 
-  
-    
+def compute_graph_distances_list(original_graph, generated_graph, node_features, device="cpu"):
+    assert len(original_graph) == len(generated_graph)
+    encoder = GraphEncoder(node_features=node_features).to(device); encoder.eval()
+
+    euclid_list = []; mmd_list = []; kernel_list = []; spectral_list = []
+    for og, gg in zip(original_graph, generated_graph):
+        og = og.to(device); gg = gg.to(device)
+        ob = torch.zeros(og.x.size(0), dtype=torch.long, device=device)
+        gb = torch.zeros(gg.x.size(0), dtype=torch.long, device=device)
+        with torch.no_grad():
+            eo = encoder(og.x, og.edge_index, ob).squeeze()
+            eg = encoder(gg.x, gg.edge_index, gb).squeeze()
+        euclid_list.append(euclidean_distance(eo, eg))
+        mmd_list.append(mmd_distance(eo, eg))
+        kernel_list.append(graph_kernel_similarity(og, gg))
+        spectral_list.append(spectral_distance(og, gg))
+
+    return euclid_list, mmd_list, kernel_list, spectral_list
+
+
 def ensure_nx(G):
-    if not isinstance(G, nx.Graph):
-        G = to_networkx(G, to_undirected=True)
-    return G
-
-
-def degree_distribution(G):
-    G = ensure_nx(G)
-    return np.array([d for _, d in G.degree()])
-
-
-def clustering_coeff_distribution(G):
-    """Local clustering coefficient per node."""
-    G = ensure_nx(G)
-    return np.array(list(nx.clustering(G).values()))
-
-
-def bc_distribution(G):
-    """Betweenness centrality per node."""
-    G = ensure_nx(G)
-    return np.array(list(nx.betweenness_centrality(G).values()))
-
-
-def cc_distribution(G):
-    """Closeness centrality per node."""
-    G = ensure_nx(G)
-    return np.array(list(nx.closeness_centrality(G).values()))
+    return G if isinstance(G, nx.Graph) else to_networkx(G, to_undirected=True)
 
 
 def similarity_score(a, b):
-    a = np.array(a, dtype=float)
-    b = np.array(b, dtype=float)
-
+    a, b = np.array(a, dtype=float), np.array(b, dtype=float)
     if len(a) == 0 or len(b) == 0:
         return 0.0
-
     dist      = wasserstein_distance(a, b)
     combined  = np.concatenate([a, b])
     val_range = combined.max() - combined.min()
+    return 100.0 if val_range == 0 else max(0.0, (1 - dist / val_range) * 100)
 
-    if val_range == 0:
-        return 100.0   # both distributions are identical constants
 
-    return max(0.0, (1 - dist / val_range) * 100)
+def compute_structural_scores(original_graph, generated_graph):
+    deg_s = []; clust_s = []; bc_s = []; cc_s = []
+    for og, gg in zip(original_graph, generated_graph):
+        Go, Gg = ensure_nx(og), ensure_nx(gg)
+        deg_s.append(similarity_score(
+            [d for _, d in Go.degree()], [d for _, d in Gg.degree()]))
+        clust_s.append(similarity_score(
+            list(nx.clustering(Go).values()), list(nx.clustering(Gg).values())))
+        bc_s.append(similarity_score(
+            list(nx.betweenness_centrality(Go).values()),
+            list(nx.betweenness_centrality(Gg).values())))
+        cc_s.append(similarity_score(
+            list(nx.closeness_centrality(Go).values()),
+            list(nx.closeness_centrality(Gg).values())))
+    return deg_s, clust_s, bc_s, cc_s
 
 
 
