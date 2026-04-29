@@ -48,62 +48,26 @@ from torch_geometric.datasets import PolBlogs
 from torch_geometric.utils import k_hop_subgraph
 from collections import Counter
 
-def train_model(model, dataloader, num_epochs=150, lr=1e-3, beta_schedule='constant'):
-            """Training loop with beta annealing for KL term"""
-            optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, T_max=num_epochs, eta_min=1e-5
-            )
-
-            print(f"\nTraining for {num_epochs} epochs...")
-            print(f"Beta schedule: {beta_schedule}")
-
-            for epoch in range(num_epochs):
-                # Beta annealing (cyclical or linear)
-                if beta_schedule == 'linear':
-                    beta = min(1.0, epoch / (num_epochs * 0.5))
-                elif beta_schedule == 'cyclical':
-                    cycle = epoch % (num_epochs // 4)
-                    beta = min(1.0, cycle / (num_epochs // 8))
-                else:  # constant
-                    beta = 1.0
-
-                total_loss = total_adj = total_feat = total_kl = total_sparse = 0.0
-                count = 0
-
-                pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}", leave=False)
-                for adj, feat, labels, mask in pbar:
-                    adj = adj.to(device)
-                    feat = feat.to(device)
-                    labels = labels.to(device)
-                    mask = mask.to(device)
-
-                    loss, adj_l, feat_l, kl_l, sparse_l = model.train_step(
-                        adj, feat, labels, mask, optimizer, beta
-                    )
-
-                    if loss > 0:
-                        total_loss += loss
-                        total_adj += adj_l
-                        total_feat += feat_l
-                        total_kl += kl_l
-                        total_sparse += sparse_l
-                        count += 1
-
-                        pbar.set_postfix({'loss': f'{loss:.4f}', 'beta': f'{beta:.3f}'})
-
-                scheduler.step()
-
-                if count > 0:
-                    avg_loss = total_loss / count
-                    avg_adj = total_adj / count
-                    avg_feat = total_feat / count
-                    avg_kl = total_kl / count
-                    avg_sparse = total_sparse / count
-
-                    print(f"Epoch {epoch+1}/{num_epochs} | Loss: {avg_loss:.6f} "
-                          f"(Adj: {avg_adj:.4f}, Feat: {avg_feat:.4f}, KL: {avg_kl:.4f}, "
-                          f"Sparse: {avg_sparse:.4f}) | Beta: {beta:.3f} | "
-                          f"LR: {scheduler.get_last_lr()[0]:.6f}")
-
-            print("\n✓ Training completed!")
+def train_cvae(model, dataloader, num_epochs, lr, beta_schedule="linear"):
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
+    for epoch in range(num_epochs):
+        if beta_schedule == "linear":
+            beta = min(1.0, epoch / max(num_epochs * 0.5, 1))
+        elif beta_schedule == "cyclical":
+            beta = min(1.0, (epoch % max(num_epochs // 4, 1)) / max(num_epochs // 8, 1))
+        else:
+            beta = 1.0
+        tl, cnt = 0.0, 0
+        for adj, feat, labels, mask in tqdm(dataloader,
+                                            desc=f"CVAE epoch {epoch+1}/{num_epochs}",
+                                            leave=False):
+            adj = adj.to(model.device); feat = feat.to(model.device)
+            labels = labels.to(model.device); mask = mask.to(model.device)
+            l, *_ = model.train_step(adj, feat, labels, mask, optimizer, beta)
+            if l > 0:
+                tl += l; cnt += 1
+        scheduler.step()
+        if cnt:
+            print(f"  CVAE [{epoch+1}/{num_epochs}] loss={tl/cnt:.5f}  beta={beta:.3f}")
+    print("✓ CVAE training complete")

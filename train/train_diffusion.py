@@ -51,38 +51,25 @@ import config
 import argparse
 ## need model here and dataloader
 def train_diffusion(model, dataloader, num_epochs, lr):
-    optimizer   = torch.optim.AdamW(
-        model.model.parameters(), lr=lr,
-        weight_decay=config.DIFF_WEIGHT_DECAY,
-        betas=(config.DIFF_ADAM_BETA1, config.DIFF_ADAM_BETA2))
-    warmup      = config.DIFF_WARMUP_EPOCHS
- 
-    def lr_lambda(epoch):
-        if epoch < warmup:
-            return (epoch + 1) / warmup
-        progress = (epoch - warmup) / max(num_epochs - warmup, 1)
-        return 0.5 * (1 + np.cos(np.pi * progress))
- 
+    optimizer = torch.optim.AdamW(model.model.parameters(), lr=lr, weight_decay=1e-4)
+    warmup = 10
+    def lr_lambda(ep):
+        if ep < warmup:
+            return (ep + 1) / warmup
+        p = (ep - warmup) / max(num_epochs - warmup, 1)
+        return 0.5 * (1 + np.cos(np.pi * p))
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-    print(f"\nTraining diffusion model for {num_epochs} epochs …")
- 
     for epoch in range(num_epochs):
-        total_loss = total_adj = total_feat = count = 0
-        pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}", leave=False)
-        for adj, feat, labels, mask in pbar:
-            adj    = adj.to(model.device)
-            feat   = feat.to(model.device)
-            labels = labels.to(model.device)
-            mask   = mask.to(model.device)
-            loss, al, fl = model.train_step(adj, feat, labels, mask, optimizer)
-            if loss > 0:
-                total_loss += loss; total_adj += al; total_feat += fl; count += 1
-                pbar.set_postfix({"loss": f"{loss:.4f}"})
+        total_loss = 0.0; count = 0
+        for adj, feat, labels, mask in tqdm(dataloader,
+                                            desc=f"Diffusion epoch {epoch+1}/{num_epochs}",
+                                            leave=False):
+            adj    = adj.to(model.device);   feat   = feat.to(model.device)
+            labels = labels.to(model.device); mask   = mask.to(model.device)
+            l, _, _ = model.train_step(adj, feat, labels, mask, optimizer)
+            if l > 0:
+                total_loss += l; count += 1
         scheduler.step()
         if count:
-            print(f"Epoch {epoch+1}/{num_epochs} | "
-                  f"Loss={total_loss/count:.6f} "
-                  f"(Adj={total_adj/count:.6f}, Feat={total_feat/count:.6f}) | "
-                  f"LR={scheduler.get_last_lr()[0]:.6f}")
- 
+            print(f"  Diffusion [{epoch+1}/{num_epochs}] loss={total_loss/count:.5f}")
     print("✓ Diffusion training complete")

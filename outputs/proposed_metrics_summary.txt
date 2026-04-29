@@ -1,0 +1,20 @@
+Metric Summary – arch=proposed
+==================================================
+
+Dataset: ENZYMES – Distance metrics
+                      Mean         Std
+fgd_mean          0.122047    0.055127
+euclidean_mean    0.346517    0.074228
+mmd_mean          0.120634    0.057421
+kernel_mean     337.676667  188.176307
+spectral_mean     2.300369    0.985641
+
+Dataset: ENZYMES – Structural metrics
+                    Mean        Std
+degree_scores -77.879391  84.390563
+lcc_scores     77.089232  12.667690
+bc_scores      92.053582   4.246075
+cc_scores      70.711557   9.204105
+
+--------------------------------------------------
+

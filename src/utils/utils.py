@@ -49,6 +49,9 @@ from torch_geometric.utils import k_hop_subgraph
 from collections import Counter
 import argparse
 import config
+# ── project config ─────────────────────────────────────────────────────────
+from config import (DATASET_CONFIGS, ARCH_CONFIGS, GIN_CONFIG, ATTACK_CONFIGS, DEFAULT_SEEDS, DEFAULT_DATA_ROOT,
+                     DEFAULT_MODEL_ROOT, DEFAULT_OUTPUT_ROOT, get_train_config, get_gen_config)
 
 
 # set seed for reproducibility
@@ -215,9 +218,133 @@ def summarise_results(experiment_type, prefixes):
 
 
 
+#############################################################################################################################
+#############################################################################################################################
+# load dataset function 
+
+def load_dataset(dataset_name: str, data_root: str):
+    """Load and return the raw dataset object (or list for ego-graph types)."""
+    dcfg = DATASET_CONFIGS[dataset_name]
+    src  = dcfg["source"]
+
+    if src == "TUDataset":
+        return TUDataset(root=os.path.join(data_root, "TUDataset"),
+                         name=dcfg["name"])
+    elif src == "Planetoid":
+        raw = Planetoid(root=data_root, name=dcfg["name"])
+        return node_to_graph_dataset(raw[0], dcfg["k_hop"])
+    elif src == "Airports":
+        raw = Airports(root=data_root, name=dcfg["name"])
+        return node_to_graph_dataset(raw[0], dcfg["k_hop"])
+    elif src == "PolBlogs":
+        raw = PolBlogs(root=data_root)
+        return node_to_graph_dataset(raw[0], dcfg["k_hop"])
+    else:
+        raise ValueError(f"Unknown dataset source: {src}")
+
+# Data preprocessing for Cora and PolBlogs
+def node_to_graph_dataset(data, k_hop: int):
+    """Convert a node-classification graph to a list of ego-subgraph Data objects."""
+    graphs = []
+    for node_idx in range(data.num_nodes):
+        subset, sub_edge_index, _, _ = k_hop_subgraph(
+            node_idx, num_hops=k_hop,
+            edge_index=data.edge_index, relabel_nodes=True
+        )
+        if sub_edge_index.size(1) == 0:
+            continue
+        x_sub      = data.x[subset] if data.x is not None else torch.ones(len(subset), 1)
+        node_labels = data.y[subset]
+        majority    = Counter(node_labels.tolist()).most_common(1)[0][0]
+        graphs.append(Data(
+            x=x_sub,
+            edge_index=sub_edge_index,
+            y=torch.tensor([majority], dtype=torch.long)
+        ))
+    return graphs
+
+# Infer node features.
+def infer_node_features(dataset) -> int:
+    """Return the node-feature dimension for a dataset (list or TUDataset)."""
+    if hasattr(dataset, "num_node_features"):
+        return dataset.num_node_features
+    sample = dataset[0]
+    if sample.x is not None:
+        return sample.x.shape[1]
+    return 1
+
+class GraphDatasetWrapper(Dataset):
+    """Pad graphs to max_nodes and return (adj, features, label, mask)."""
+
+    def __init__(self, data_list, max_nodes, num_classes, min_nodes=2, max_avg_degree=5.0):
+        self.max_nodes   = max_nodes
+        self.num_classes = num_classes
+        self.valid_data  = []
+
+        for d in data_list:
+            if d.x is None or d.x.shape[1] == 0:
+                continue
+            if not (min_nodes <= d.num_nodes <= max_nodes):
+                continue
+            if d.edge_index.shape[1] == 0:
+                continue
+            avg_deg = d.edge_index.shape[1] / d.num_nodes
+            if avg_deg <= max_avg_degree:
+                self.valid_data.append(d)
+
+        if not self.valid_data:
+            raise RuntimeError("No valid graphs found after filtering.")
+
+        all_feats        = torch.cat([d.x for d in self.valid_data], dim=0)
+        self.feat_mean   = all_feats.mean(0, keepdim=True)
+        self.feat_std    = all_feats.std(0,  keepdim=True) + 1e-8
+        self.feature_dim = self.valid_data[0].x.shape[1]
+
+        # Class statistics
+        self.class_stats = {}
+        for lbl in range(num_classes):
+            cg = [d for d in self.valid_data if d.y.item() == lbl]
+            if cg:
+                self.class_stats[lbl] = {
+                    "avg_nodes": int(np.mean([d.num_nodes for d in cg])),
+                    "avg_edges": int(np.mean([d.edge_index.shape[1] / 2 for d in cg])),
+                    "count":     len(cg),
+                }
+
+    def __len__(self):
+        return len(self.valid_data)
+
+    def __getitem__(self, idx):
+        d             = self.valid_data[idx]
+        feats_norm    = (d.x - self.feat_mean) / self.feat_std
+        adj           = to_dense_adj(d.edge_index, max_num_nodes=self.max_nodes)[0]
+        features      = torch.zeros(self.max_nodes, self.feature_dim)
+        features[:d.num_nodes] = feats_norm
+        mask          = torch.zeros(self.max_nodes)
+        mask[:d.num_nodes] = 1
+        return adj, features, d.y.item(), mask
+
+def list_of_dicts_to_pyg(data_list):
+    pyg = []
+    for d in data_list:
+        ei = d["adj"].nonzero(as_tuple=False).t().contiguous()
+        pyg.append(Data(x=d["features"], edge_index=ei,
+                        y=torch.tensor([d["label"]], dtype=torch.long)))
+    return pyg
 
 
+def dataset_to_pyg(dataset_list):
+    """Convert a list of Data objects to plain PyG Data list (no-op, just standardise)."""
+    return list(dataset_list)
 
-
-
-
+def generate_graphs(gen_model, labels, arch, device):
+    graphs = []
+    for label in tqdm(labels, desc="Generating"):
+        if arch == "proposed":
+            adj, feat = gen_model.sample(label)
+        elif arch == "random":
+            adj, feat = gen_model.sample(label)
+        else:   # base / CVAE
+            adj, feat = gen_model.sample(label)
+        graphs.append({"adj": adj, "features": feat, "label": label})
+    return graphs

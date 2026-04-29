@@ -1,193 +1,226 @@
-# =============================================================================
-# config.py  –  All constants for the LOGRA pipeline
-#               Covers both "proposed" (diffusion) and "baseline" (CVAE) modes
-# =============================================================================
-
-# ── Reproducibility ───────────────────────────────────────────────────────────
-SEEDS = [11, 22, 33, 44, 66]
-
-# ── Experiment modes ──────────────────────────────────────────────────────────
-# Pass via --experiment-type at the CLI.
-EXPERIMENT_PROPOSED = "proposed"   # Laplace-diffusion generator
-EXPERIMENT_BASELINE = "baseline"   # CVAE generator
-EXPERIMENT_TYPE     = EXPERIMENT_PROPOSED   # default
-
-# ── Supported dataset names ───────────────────────────────────────────────────
-SUPPORTED_DATASETS = ["Cora", "USA"]
-
-# ── Dataset-specific hyperparameters ─────────────────────────────────────────
-# Each entry carries epoch counts for BOTH the GIN classifier (num_epoch1)
-# and the generative model (num_epoch2), plus the per-mode MAX_NODE values.
-# The baseline uses larger ego-graphs: k_hop=3 and bigger MAX_NODE.
-DATASET_CONFIG = {
+DATASET_CONFIGS = {
+    # ── TUDataset ──────────────────────────────────────────────────────────
+    "ENZYMES": {
+        "source":        "TUDataset",
+        "name":          "ENZYMES",
+        "node_features": 3,
+        "classes":       6,
+        "max_nodes":     126,
+        "k_hop":         None,          # not applicable for TUDatasets
+    },
+    "NCI1": {
+        "source":        "TUDataset",
+        "name":          "NCI1",
+        "node_features": 37,
+        "classes":       2,
+        "max_nodes":     126,
+        "k_hop":         None,
+    },
+    # ── Node → Graph (ego subgraph) datasets ──────────────────────────────
     "Cora": {
-        "dataset_name"        : "Cora",
-        "classes"             : 7,
-        # proposed (diffusion) settings
-        "proposed_MAX_NODE"   : 200,
-        "proposed_num_epoch1" : 70,
-        "proposed_num_epoch2" : 70,
-        "proposed_k_hop"      : 2,
-        # baseline (CVAE) settings
-        "baseline_MAX_NODE"   : 500,
-        "baseline_num_epoch1" : 50,
-        "baseline_num_epoch2" : 50,
-        "baseline_k_hop"      : 3,
+        "source":        "Planetoid",
+        "name":          "Cora",
+        "node_features": -1,            # inferred at runtime
+        "classes":       7,
+        "max_nodes":     500,
+        "k_hop":         4,
     },
     "USA": {
-        "dataset_name"        : "USA",
-        "classes"             : 4,
-        # proposed
-        "proposed_MAX_NODE"   : 100,
-        "proposed_num_epoch1" : 50,
-        "proposed_num_epoch2" : 50,
-        "proposed_k_hop"      : 2,
-        # baseline
-        "baseline_MAX_NODE"   : 100,
-        "baseline_num_epoch1" : 20,
-        "baseline_num_epoch2" : 20,
-        "baseline_k_hop"      : 3,
+        "source":        "Airports",
+        "name":          "USA",
+        "node_features": -1,            # inferred at runtime
+        "classes":       4,
+        "max_nodes":     100,
+        "k_hop":         4,
+    },
+    # ── PolBlogs (kept for completeness) ──────────────────────────────────
+    "PolBlogs": {
+        "source":        "PolBlogs",
+        "name":          "PolBlogs",
+        "node_features": -1,
+        "classes":       2,
+        "max_nodes":     500,
+        "k_hop":         2,
     },
 }
 
-# ── Dataset prefixes used when globbing result CSVs ──────────────────────────
-# proposed outputs:  Cor_proposed_seed*.csv  → first 3 chars = "Cor"
-# baseline outputs:  Cor_baseline_seed*.csv  → first 3 chars = "Cor"
-DATASET_PREFIXES_PROPOSED = ["Cor"]
-DATASET_PREFIXES_BASELINE = ["Cor"]
+# ---------------------------------------------------------------------------
+# Architecture registry
+# ---------------------------------------------------------------------------
+# Maps the CLI --arch flag to a human-readable description and internal key.
 
-# ── Data root ─────────────────────────────────────────────────────────────────
-DATA_ROOT = "data"
+ARCH_CONFIGS = {
+    # ── proposed: Laplace Diffusion model (LOGRA proposed) ────────────────
+    "proposed": {
+        "description":   "Laplace Diffusion graph generation model",
+        "gen_model":     "diffusion",
+    },
+    # ── random: Conditional GAN graph generation model ────────────────────
+    "random": {
+        "description":   "Conditional GAN graph generation model",
+        "gen_model":     "gan",
+    },
+    # ── base: Conditional VAE (CVAE) graph generation model ───────────────
+    "base": {
+        "description":   "Conditional VAE (CVAE) graph generation model",
+        "gen_model":     "cvae",
+    },
+}
 
-# ── Train / test / shadow split ratios ───────────────────────────────────────
-SHADOW_SPLIT_RATIO  = 0.5
-TEST_SPLIT_RATIO    = 0.2
-SPLIT_RANDOM_STATE  = 42
+ATTACK_CONFIGS = {
+    # ── logra: LOGRA attack ────────────────────────────────────────────────
+    "logra": {
+        "description":   "LOGRA attack",
+        
+    },
+    # ── csgra: CSGRA attack ────────────────────────────────────────────────
+    "csgra": {
+        "description":   "CSGRA attack",
+     
+    },
+    # ── sota: State-of-the-art graph generation model ───────────────────────
+    "sota": {
+        "description":   "SOTA attack",
+      
+    },
+}
 
-# =============================================================================
-# GIN Classifier  (shared by both modes)
-# =============================================================================
-GIN_HIDDEN_CHANNELS = 1000
-GIN_OUT_CHANNELS    = 100
-GIN_LR              = 0.001
-GIN_BATCH_SIZE      = 64
+# ---------------------------------------------------------------------------
+# Training hyperparameters (per architecture × dataset)
+# ---------------------------------------------------------------------------
+# Keys are (arch, dataset_name). Fall back to ("default", "default") when
+# an exact match is not found.
 
-# =============================================================================
-# NCI1GraphDataset filters
-# (MIN_NODES differs: proposed keeps ≥ 2, baseline keeps ≥ 8)
-# =============================================================================
-MAX_AVG_DEGREE      = 5.0
-PROPOSED_MIN_NODES  = 2
-BASELINE_MIN_NODES  = 8
+TRAIN_CONFIGS = {
+    # ── proposed (diffusion) ──────────────────────────────────────────────
+    ("proposed", "ENZYMES"): {
+        "num_epoch_classifier": 300,
+        "num_epoch_gen":        70,
+    },
+    ("proposed", "NCI1"): {
+        "num_epoch_classifier": 300,
+        "num_epoch_gen":        70,
+    },
+    ("proposed", "Cora"): {
+        "num_epoch_classifier": 50,
+        "num_epoch_gen":        50,
+    },
+    ("proposed", "USA"): {
+        "num_epoch_classifier": 50,
+        "num_epoch_gen":        50,
+    },
 
-# =============================================================================
-# Proposed mode – Laplace Diffusion
-# =============================================================================
+    # ── random (GAN) ──────────────────────────────────────────────────────
+    ("random", "ENZYMES"): {
+        "num_epoch_classifier": 300,
+        "num_epoch_gen":        70,
+    },
+    ("random", "NCI1"): {
+        "num_epoch_classifier": 300,
+        "num_epoch_gen":        70,
+    },
 
-# ── Model ─────────────────────────────────────────────────────────────────────
-DIFF_BATCH_SIZE          = 32
-DIFF_LR                  = 2e-3
-DIFF_NUM_TIMESTEPS       = 80
-DIFF_EPSILON             = 0.5
+    # ── base (CVAE) ───────────────────────────────────────────────────────
+    ("base", "ENZYMES"): {
+        "num_epoch_classifier": 300,
+        "num_epoch_gen":        50,
+    },
+    ("base", "NCI1"): {
+        "num_epoch_classifier": 300,
+        "num_epoch_gen":        50,
+    },
+    ("base", "Cora"): {
+        "num_epoch_classifier": 5,
+        "num_epoch_gen":        10,
+    },
+    ("base", "USA"): {
+        "num_epoch_classifier": 5,
+        "num_epoch_gen":        10,
+    },
 
-# Beta schedule
-BETA_START               = 1e-4
-BETA_END                 = 0.02
+    # ── fallback defaults ─────────────────────────────────────────────────
+    ("default", "default"): {
+        "num_epoch_classifier": 100,
+        "num_epoch_gen":        50,
+    },
+}
 
-# Noise clamping
-LAPLACE_CLAMP_MIN        = -5.0
-LAPLACE_CLAMP_MAX        =  5.0
+# ---------------------------------------------------------------------------
+# GIN classifier hyperparameters (shared across all arches)
+# ---------------------------------------------------------------------------
+GIN_CONFIG = {
+    "hidden_channels": 1000,
+    "out_channels":    100,
+    "lr":              0.001,
+    "batch_size":      64,
+}
 
-# ── GraphDiffusionNetwork ─────────────────────────────────────────────────────
-GDN_HIDDEN_DIM           = 256
-GDN_TIME_DIM             = 128
-GDN_DROPOUT              = 0.1
-GDN_TIME_SCALE           = 0.1
+# ---------------------------------------------------------------------------
+# Generative model hyperparameters
+# ---------------------------------------------------------------------------
+DIFFUSION_CONFIG = {
+    "batch_size":    32,
+    "lr":            1e-3,
+    "num_timesteps": 100,
+    "epsilon":       0.5,
+    "latent_dim":    128,       # unused by diffusion but kept for symmetry
+    "hidden_dim":    256,
+}
 
-# ── Training ─────────────────────────────────────────────────────────────────
-DIFF_WEIGHT_DECAY        = 1e-4
-DIFF_ADAM_BETA1          = 0.9
-DIFF_ADAM_BETA2          = 0.999
-DIFF_GRAD_CLIP           = 0.5
-DIFF_WARMUP_EPOCHS       = 10
-FEAT_LOSS_WEIGHT         = 2.0   # total = adj_loss + FEAT_LOSS_WEIGHT * feat_loss
+GAN_CONFIG = {
+    "batch_size":  32,
+    "lr_g":        2e-4,
+    "lr_d":        2e-4,
+    "latent_dim":  128,
+    "hidden_dim":  256,
+}
 
-# ── Sampling (reverse diffusion) ─────────────────────────────────────────────
-SAMPLE_MIN_NODES         = 15
-SAMPLE_MAX_NODES         = 25
-INITIAL_NOISE_SCALE      = 0.5
-POSTERIOR_NOISE_SCALE    = 0.5
-ADJ_CLAMP_MIN            = -1.0
-ADJ_CLAMP_MAX            =  1.0
-FEAT_CLAMP_MIN           = -3.0
-FEAT_CLAMP_MAX           =  3.0
-ADJ_THRESHOLD_PERCENTILE = 0.70
+CVAE_CONFIG = {
+    "batch_size":  32,
+    "lr":          2e-3,
+    "latent_dim":  128,
+    "hidden_dim":  256,
+    "beta_schedule": "linear",   # "constant" | "linear" | "cyclical"
+}
 
-# =============================================================================
-# Baseline mode – Conditional VAE (CVAE)
-# =============================================================================
+# ---------------------------------------------------------------------------
+# Graph-distance filter (NCI1GraphDataset)
+# ---------------------------------------------------------------------------
+GRAPH_FILTER = {
+    "min_nodes":   2,       # proposed/base use 2; random uses 8 (harder filter)
+    "max_degree":  5.0,
+}
 
-# ── Architecture ─────────────────────────────────────────────────────────────
-CVAE_HIDDEN_DIM          = 256
-CVAE_LATENT_DIM          = 128
-CVAE_ENC_ADJ_DROP        = 0.4
-CVAE_ENC_FEAT_DROP       = 0.2
-CVAE_ENC_JOINT_DROP      = 0.2
-CVAE_DEC_DROP            = 0.1
+# ---------------------------------------------------------------------------
+# Seeds used in the paper experiments
+# ---------------------------------------------------------------------------
+DEFAULT_SEEDS = [11, 22, 33, 44, 55]
 
-# ── Training ─────────────────────────────────────────────────────────────────
-CVAE_BATCH_SIZE          = 32
-CVAE_LR                  = 2e-3
-CVAE_WEIGHT_DECAY        = 1e-4
-CVAE_GRAD_CLIP           = 1.0
-CVAE_BETA_SCHEDULE       = "linear"   # "constant" | "linear" | "cyclical"
-CVAE_BETA_MAX            = 1.0
-CVAE_SPARSITY_WEIGHT     = 0.05
+# ---------------------------------------------------------------------------
+# Output / paths
+# ---------------------------------------------------------------------------
+DEFAULT_DATA_ROOT   = "data"
+DEFAULT_MODEL_ROOT  = "models"
+DEFAULT_OUTPUT_ROOT = "outputs"
 
-# ── Laplace reparameterisation ────────────────────────────────────────────────
-CVAE_LAPLACE_EPSILON     = 0.5
-CVAE_LAPLACE_CLAMP       = 10.0      # symmetric clamp on noise samples
+RESULT_DIR = "results"
+# ---------------------------------------------------------------------------
+# Convenience helper used by main.py
+# ---------------------------------------------------------------------------
 
-# ── Sampling ─────────────────────────────────────────────────────────────────
-CVAE_ADJ_THRESHOLD       = 0.5
-CVAE_SAMPLE_MIN_NODES    = 15
-CVAE_SAMPLE_MAX_NODES    = 25
+def get_train_config(arch: str, dataset_name: str) -> dict:
+    """Return training-epoch config for the given (arch, dataset) pair."""
+    key = (arch, dataset_name)
+    if key in TRAIN_CONFIGS:
+        return dict(TRAIN_CONFIGS[key])
+    return dict(TRAIN_CONFIGS[("default", "default")])
 
-# ── Output paths ─────────────────────────────────────────────────────────────
-CVAE_SAVE_DIR            = "LOGRA_base"
-CVAE_MODEL_FILENAME      = "cvae_model.pth"
 
-# =============================================================================
-# Shared metrics & evaluation
-# =============================================================================
-ENCODER_HIDDEN_DIM       = 256
-ENCODER_EMBED_DIM        = 128
-ENCODER_EPS              = 1e-6
-SPECTRAL_K               = 20
-WL_ITERATIONS            = 2
-GC_FLUSH_EVERY           = 5
-
-# =============================================================================
-# Shared output / model paths
-# =============================================================================
-MODELS_DIR               = "models"
-FIGURES_DIR              = "figures"
-BEST_MODEL_FILENAME      = "best_model.pth"
-TRAIN_LOG_FILENAME       = "train_log.csv"
-RESULT_DIR               = "results"
-# =============================================================================
-# Shared visualisation constants
-# =============================================================================
-VIZ_NUM_SAMPLES          = 5
-VIZ_GRID_ROWS            = 4
-VIZ_GRID_COLS            = 5
-VIZ_NODE_SIZE_SMALL      = 50
-VIZ_NODE_SIZE_MED        = 140
-VIZ_NODE_SIZE_LARGE      = 450
-VIZ_DPI                  = 150
-VIZ_COLORMAP             = "tab10"
-VIZ_EDGE_CMAP            = "coolwarm"
-VIZ_FEAT_VMIN            = -2.0
-VIZ_FEAT_VMAX            =  2.0
-VIZ_SPRING_K             = 1.5
-VIZ_SPRING_ITER          = 150
+def get_gen_config(arch: str) -> dict:
+    """Return the generative-model hyperparameter dict for *arch*."""
+    mapping = {
+        "proposed": DIFFUSION_CONFIG,
+        "random":   GAN_CONFIG,
+        "base":     CVAE_CONFIG,
+    }
+    return dict(mapping.get(arch, DIFFUSION_CONFIG))
