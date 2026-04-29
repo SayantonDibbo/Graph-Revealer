@@ -536,10 +536,13 @@ def run_experiment(cfg: dict, dataset_name: str, seed: int) -> dict:
 
     # ── 6. Run attack on shadow set ──────────────────────────────────────────
     print(f"  Running {attack.upper()} attack on shadow dataset...")
-    if attack == "logra":
+    if num_classes >= 2 and attack == "logra":
+    
         total_data = logra.logra_attack(classifier, shadow_ds, device)
-    else:  # csgra
+    elif num_classes > 2 and attack == "csgra":  # csgra
         total_data = csgra.csgra_attack(classifier, shadow_ds, device)
+    else:
+        raise ValueError(f"Unsupported attack {attack} for num_classes={num_classes}")
 
     # ── 7. Generative model training ─────────────────────────────────────────
     gen_cfg        = cfg["gen"]
