@@ -71,13 +71,13 @@ class GCNEncoder(nn.Module):
         self.conv3 = GCNConv(hidden_dim, embedding_dim)
         self.norm1 = nn.BatchNorm1d(hidden_dim)
         self.norm2 = nn.BatchNorm1d(hidden_dim)
-
+ 
     def forward(self, x, edge_index, batch):
         h = F.relu(self.norm1(self.conv1(x, edge_index)))
         h = F.relu(self.norm2(self.conv2(h, edge_index)))
         return global_mean_pool(self.conv3(h, edge_index), batch)
-
-
+ 
+ 
 def compute_fgd(orig_list, gen_list, encoder, device="cpu"):
     encoder = encoder.to(device).eval()
     scores  = []
@@ -106,16 +106,16 @@ def compute_fgd(orig_list, gen_list, encoder, device="cpu"):
         fd = (mu1 - mu2).dot(mu1 - mu2) + torch.trace(c1 + c2 - 2 * sq)
         scores.append(fd.item())
     return scores
-
-
+ 
+ 
 def pyg_to_grakel(data):
     if data.edge_index.size(1) == 0:
         return None
     G  = to_networkx(data, to_undirected=True)
     nl = {n: (int(data.x[n].argmax()) if data.x.size(1) > 1 else 0) for n in G.nodes()}
     return GrakelGraph(list(G.edges()), node_labels=nl)
-
-
+ 
+ 
 def compute_metrics(orig_list, gen_list, node_features, device="cpu"):
     encoder = GCNEncoder(node_features).to(device).eval()
     euclid_l, mmd_l, kernel_l, spectral_l = [], [], [], []
@@ -150,9 +150,9 @@ def compute_metrics(orig_list, gen_list, node_features, device="cpu"):
             return ev[:k] if len(ev) >= k else np.pad(ev, (0, k - len(ev)))
         spectral_l.append(float(np.linalg.norm(spectrum(og) - spectrum(gg))))
     return euclid_l, mmd_l, kernel_l, spectral_l
-
-
-def compute_structural(orig_list, gen_list):
+ 
+ 
+"""def compute_structural(orig_list, gen_list):
     def _ensure_nx(g):
         return to_networkx(g, to_undirected=True) if not isinstance(g, nx.Graph) else g
     def _ws(a, b):
@@ -167,11 +167,54 @@ def compute_structural(orig_list, gen_list):
                         list(nx.betweenness_centrality(gn).values())))
         cc_s.append(_ws(list(nx.closeness_centrality(go).values()),
                         list(nx.closeness_centrality(gn).values())))
-    return deg_s, lcc_s, bc_s, cc_s
+    return deg_s, lcc_s, bc_s, cc_s"""
 
+def compute_structural(orig_list, gen_list):
 
+    def ensure_nx(G):
+        return G if isinstance(G, nx.Graph) else to_networkx(G, to_undirected=True)
 
+    def similarity_score(a, b):
+        a = np.asarray(a, dtype=float)
+        b = np.asarray(b, dtype=float)
 
-   
+        if a.size == 0 or b.size == 0:
+            return 0.0
+
+        dist = wasserstein_distance(a, b)
+        combined = np.concatenate([a, b])
+        val_range = combined.max() - combined.min()
+
+        if val_range == 0:
+            return 100.0
+
+        return max(0.0, (1 - dist / val_range) * 100)
+
+    deg_s, clust_s, bc_s, cc_s = [], [], [], []
+
+    for og, gg in zip(orig_list, gen_list):
+        Go, Gg = ensure_nx(og), ensure_nx(gg)
+
+        deg_s.append(similarity_score(
+            [d for _, d in Go.degree()],
+            [d for _, d in Gg.degree()]
+        ))
+
+        clust_s.append(similarity_score(
+            list(nx.clustering(Go).values()),
+            list(nx.clustering(Gg).values())
+        ))
+
+        bc_s.append(similarity_score(
+            list(nx.betweenness_centrality(Go).values()),
+            list(nx.betweenness_centrality(Gg).values())
+        ))
+
+        cc_s.append(similarity_score(
+            list(nx.closeness_centrality(Go).values()),
+            list(nx.closeness_centrality(Gg).values())
+        ))
+
+    return deg_s, clust_s, bc_s, cc_s
 
 
