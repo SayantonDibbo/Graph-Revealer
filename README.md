@@ -129,18 +129,7 @@ Full Dataset
 │   │           ├── gen_model.pth
 │   │           └── train_log.csv
 │   └── best_model.pth
-├── new_config.py
-├── new_main.py
 ├── outputs
-│   ├── Cora_proposed_seed11.csv
-│   ├── Cora_proposed_seed22.csv
-│   ├── ENZYMES_proposed_seed11.csv
-│   ├── ENZYMES_proposed_seed22.csv
-│   ├── proposed_metrics_summary.txt
-│   ├── structural_Cora_proposed_seed11.csv
-│   ├── structural_Cora_proposed_seed22.csv
-│   ├── structural_ENZYMES_proposed_seed11.csv
-│   └── structural_ENZYMES_proposed_seed22.csv
 ├── requirements.txt
 ├── results
 │   └── proposed_metrics_summary.txt
@@ -283,7 +272,7 @@ Full Dataset
     ├── train_gan.py
     └── train_target.py
 
-62 directories, 158 files
+62 directories, 147 files
 
 ```
 
@@ -302,8 +291,8 @@ Full Dataset
 - pandas
 - numpy
 - matplotlib
-All the required modules are placed in requirements.txt
-### Supported Datasets
+- All the required modules are placed in requirements.txt
+### Datasets
 
 | Dataset   | Source       | Type                  |
 |-----------|--------------|-----------------------|
@@ -411,9 +400,8 @@ python main.py --arch <arch> --dataset <dataset> --attack <attack> [options]
 | `--epochs-gen` | ❌ | Override generative model training epochs |
 | `--gen-lr` | ❌ | Learning rate for the generative model |
 | `--gen-batch-size` | ❌ | Batch size for generative model training |
-| `--latent-dim` | ❌ | Latent dimension (GAN / CVAE) |
+| `--latent-dim` | ❌ | Latent dimension (GAN / AE) |
 | `--hidden-dim` | ❌ | Hidden dimension for generator/encoder/decoder |
-| `--beta-schedule` | ❌ | CVAE KL annealing: `constant` / `linear` / `cyclical` |
 | `--lr-g` | ❌ | GAN generator learning rate |
 | `--lr-d` | ❌ | GAN discriminator learning rate |
 | `--data-root` | ❌ | Root folder for datasets (default: `./data`) |
