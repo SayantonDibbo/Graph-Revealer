@@ -26,7 +26,7 @@ Two defence mechanisms are included: **Differential Privacy (DP-SGD)** and **Edg
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
-  - [Attack Runner](#attack-runner-mainpy)
+  - [Attack](#attack-runner-mainpy)
   - [Defence: Differential Privacy](#defence-differential-privacy-main_dppy)
   - [Defence: Edge Perturbation](#defence-edge-perturbation-main_eppy)
 - [Output](#output)
@@ -77,46 +77,192 @@ Full Dataset
 
 ## Project Structure
 
-```
 .
 ├── Framework
-│   └── Framework.png
+│   └── Framework.png
 ├── LICENSE
 ├── README.md
+├── __pycache__
+│   └── config.cpython-311.pyc
 ├── config.py
+├── data
+│   ├── Cora
+│   │   ├── processed
+│   │   │   ├── data.pt
+│   │   │   ├── pre_filter.pt
+│   │   │   └── pre_transform.pt
+│   │   └── raw
+│   │       ├── ind.cora.allx
+│   │       ├── ind.cora.ally
+│   │       ├── ind.cora.graph
+│   │       ├── ind.cora.test.index
+│   │       ├── ind.cora.tx
+│   │       ├── ind.cora.ty
+│   │       ├── ind.cora.x
+│   │       └── ind.cora.y
+│   └── TUDataset
+│       └── ENZYMES
+│           ├── processed
+│           │   ├── data.pt
+│           │   ├── pre_filter.pt
+│           │   └── pre_transform.pt
+│           └── raw
+│               ├── ENZYMES_A.txt
+│               ├── ENZYMES_graph_indicator.txt
+│               ├── ENZYMES_graph_labels.txt
+│               ├── ENZYMES_node_attributes.txt
+│               ├── ENZYMES_node_labels.txt
+│               └── README.txt
+├── inference
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-311.pyc
+│   │   └── inference.cpython-311.pyc
+│   └── inference.py
 ├── main.py
-├── data/
-├── inference/
-│   └── inference.py
-├── models/
-├── outputs/
-├── results/
+├── outputs
+├── requirements.txt
 ├── setup.py
-├── src/
-│   ├── attack/
-│   │   ├── LOGRA/logra.py
-│   │   ├── CSGRA/csgra.py
-│   │   └── SOTA/sota.py
-│   ├── Defence/
-│   │   ├── DifferentialPrivacy/
-│   │   │   ├── config_dp.py        ← DP hyperparameters
-│   │   │   └── main_dp.py          ← DP defence runner
-│   │   └── EdgePerturbation/
-│   │       ├── config_ep.py        ← PE hyperparameters
-│   │       └── main_ep.py          ← PE defence runner
-│   ├── metrics/metrics.py
-│   ├── models/
-│   │   ├── autoencoder.py
-│   │   ├── diffusion.py
-│   │   ├── gan.py
-│   │   └── gnn.py
-│   └── utils/utils.py
-└── train/
+├── src
+│   ├── Datasets
+│   │   ├── __init__.py
+│   │   └── data
+│   │       ├── Cora
+│   │       │   ├── Cora
+│   │       │   │   ├── processed
+│   │       │   │   │   ├── data.pt
+│   │       │   │   │   ├── pre_filter.pt
+│   │       │   │   │   └── pre_transform.pt
+│   │       │   │   └── raw
+│   │       │   │       ├── ind.cora.allx
+│   │       │   │       ├── ind.cora.ally
+│   │       │   │       ├── ind.cora.graph
+│   │       │   │       ├── ind.cora.test.index
+│   │       │   │       ├── ind.cora.tx
+│   │       │   │       ├── ind.cora.ty
+│   │       │   │       ├── ind.cora.x
+│   │       │   │       └── ind.cora.y
+│   │       │   ├── processed
+│   │       │   │   ├── data.pt
+│   │       │   │   ├── pre_filter.pt
+│   │       │   │   └── pre_transform.pt
+│   │       │   └── raw
+│   │       │       ├── ind.cora.allx
+│   │       │       ├── ind.cora.ally
+│   │       │       ├── ind.cora.graph
+│   │       │       ├── ind.cora.test.index
+│   │       │       ├── ind.cora.tx
+│   │       │       ├── ind.cora.ty
+│   │       │       ├── ind.cora.x
+│   │       │       └── ind.cora.y
+│   │       ├── ENZYMES
+│   │       │   ├── processed
+│   │       │   │   ├── data.pt
+│   │       │   │   ├── pre_filter.pt
+│   │       │   │   └── pre_transform.pt
+│   │       │   └── raw
+│   │       │       ├── ENZYMES_A.txt
+│   │       │       ├── ENZYMES_graph_indicator.txt
+│   │       │       ├── ENZYMES_graph_labels.txt
+│   │       │       ├── ENZYMES_node_attributes.txt
+│   │       │       ├── ENZYMES_node_labels.txt
+│   │       │       └── README.txt
+│   │       ├── NCI1
+│   │       │   ├── processed
+│   │       │   │   ├── data.pt
+│   │       │   │   ├── pre_filter.pt
+│   │       │   │   └── pre_transform.pt
+│   │       │   └── raw
+│   │       │       ├── NCI1_A.txt
+│   │       │       ├── NCI1_graph_indicator.txt
+│   │       │       ├── NCI1_graph_labels.txt
+│   │       │       ├── NCI1_node_labels.txt
+│   │       │       └── README.txt
+│   │       └── PolBlogs
+│   │           ├── processed
+│   │           │   ├── data.pt
+│   │           │   ├── pre_filter.pt
+│   │           │   └── pre_transform.pt
+│   │           └── raw
+│   │               ├── README
+│   │               ├── adjacency.tsv
+│   │               ├── labels.tsv
+│   │               ├── names.tsv
+│   │               └── names_labels.tsv
+│   ├── Defence
+│   │   ├── DifferentialPrivacy
+│   │   │   ├── __init__.py
+│   │   │   ├── config_dp.py
+│   │   │   └── main_dp.py
+│   │   ├── EdgePerturbation
+│   │   │   ├── __init__.py
+│   │   │   ├── config_ep.py
+│   │   │   └── main_ep.py
+│   │   └── __init__.py
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   └── __init__.cpython-311.pyc
+│   ├── attack
+│   │   ├── CSGRA
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── __init__.cpython-311.pyc
+│   │   │   │   └── csgra.cpython-311.pyc
+│   │   │   └── csgra.py
+│   │   ├── LOGRA
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── __init__.cpython-311.pyc
+│   │   │   │   └── logra.cpython-311.pyc
+│   │   │   └── logra.py
+│   │   ├── SOTA
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── __init__.cpython-311.pyc
+│   │   │   │   └── sota.cpython-311.pyc
+│   │   │   └── sota.py
+│   │   ├── __init__.py
+│   │   └── __pycache__
+│   │       └── __init__.cpython-311.pyc
+│   ├── metrics
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-311.pyc
+│   │   │   └── metrics.cpython-311.pyc
+│   │   └── metrics.py
+│   ├── models
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-311.pyc
+│   │   │   ├── autoencoder.cpython-311.pyc
+│   │   │   ├── diffusion.cpython-311.pyc
+│   │   │   ├── gan.cpython-311.pyc
+│   │   │   └── gnn.cpython-311.pyc
+│   │   ├── autoencoder.py
+│   │   ├── diffusion.py
+│   │   ├── gan.py
+│   │   └── gnn.py
+│   └── utils
+│       ├── __init__.py
+│       ├── __pycache__
+│       │   ├── __init__.cpython-311.pyc
+│       │   └── utils.cpython-311.pyc
+│       └── utils.py
+├── structure.txt
+├── template.py
+└── train
+    ├── __pycache__
+    │   ├── train_autoencoder.cpython-311.pyc
+    │   ├── train_diffusion.cpython-311.pyc
+    │   ├── train_gan.cpython-311.pyc
+    │   └── train_target.cpython-311.pyc
     ├── train_autoencoder.py
     ├── train_diffusion.py
     ├── train_gan.py
     └── train_target.py
-```
+
+52 directories, 131 files
+
 
 ---
 

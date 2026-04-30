@@ -41,34 +41,8 @@
 │   │   └── inference.cpython-311.pyc
 │   └── inference.py
 ├── main.py
-├── models
-│   ├── Cora
-│   │   ├── best_model.pth
-│   │   ├── proposed
-│   │   │   ├── 11
-│   │   │   │   ├── best_model.pth
-│   │   │   │   ├── gen_model.pth
-│   │   │   │   └── train_log.csv
-│   │   │   └── 22
-│   │   │       ├── best_model.pth
-│   │   │       ├── gen_model.pth
-│   │   │       └── train_log.csv
-│   │   └── train_log.csv
-│   ├── ENZYMES
-│   │   └── proposed
-│   │       ├── 11
-│   │       │   ├── best_model.pth
-│   │       │   ├── gen_model.pth
-│   │       │   └── train_log.csv
-│   │       └── 22
-│   │           ├── best_model.pth
-│   │           ├── gen_model.pth
-│   │           └── train_log.csv
-│   └── best_model.pth
 ├── outputs
 ├── requirements.txt
-├── results
-│   └── proposed_metrics_summary.txt
 ├── setup.py
 ├── src
 │   ├── Datasets
@@ -208,4 +182,4 @@
     ├── train_gan.py
     └── train_target.py
 
-62 directories, 147 files
+52 directories, 131 files
