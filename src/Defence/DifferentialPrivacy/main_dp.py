@@ -12,23 +12,23 @@ Supported arches   : proposed (diffusion) | random (GAN) | base (CVAE)
 
 Examples
 --------
-# DP on ENZYMES with LOGRA attack, proposed arch, all default seeds
+# Single dataset
 python main_dp.py --arch proposed --dataset ENZYMES --attack logra
 
-# Multiple datasets in one run
+# Multiple datasets
 python main_dp.py --arch proposed --dataset ENZYMES NCI1 Cora PolBlogs --attack csgra
 
-# Override DP knobs at the command line
-python main_dp.py --arch proposed --dataset NCI1 --attack logra \\
+# Override DP knobs
+python main_dp.py --arch proposed --dataset NCI1 --attack logra \
     --dp-noise 0.8 --dp-clip 1.5 --dp-delta 1e-5
 
-# Disable DP entirely (ablation / baseline)
+# Disable DP (baseline ablation)
 python main_dp.py --arch base --dataset Cora --attack logra --no-dp
 
 # Specific seeds
 python main_dp.py --arch random --dataset PolBlogs --attack csgra --seeds 11 22
 
-# Dry-run: print resolved config and exit
+# Dry-run (prints resolved config, no training)
 python main_dp.py --arch proposed --dataset ENZYMES --attack logra --dry-run
 """
 

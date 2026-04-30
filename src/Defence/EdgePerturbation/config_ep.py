@@ -1,21 +1,5 @@
 # config_ep.py
-"""
-LOGRA – Pseudo-Edge Defence Configuration
-==========================================
-Centralised hyperparameters for main_pe.py.
 
-Sections
---------
-1. Paths & seeds
-2. GIN classifier config
-3. Dataset configs
-4. Architecture configs
-5. Attack configs
-6. Helper getters:
-     get_train_config(arch, dataset_name)
-     get_gen_config(arch)
-     get_pseudo_edge_config(dataset_name)
-"""
 
 # ===========================================================================
 # 1. Paths & seeds
