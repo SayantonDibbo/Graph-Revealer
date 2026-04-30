@@ -102,13 +102,10 @@ TRAIN_CONFIGS = {
         "num_epoch_gen":        70,
     },
     ("proposed", "Cora"): {
-        "num_epoch_classifier": 50,
-        "num_epoch_gen":        50,
+        "num_epoch_classifier": 300,
+        "num_epoch_gen":        70,
     },
-    ("proposed", "USA"): {
-        "num_epoch_classifier": 50,
-        "num_epoch_gen":        50,
-    },
+  
 
     # ── random (GAN) ──────────────────────────────────────────────────────
     ("random", "ENZYMES"): {
@@ -123,25 +120,25 @@ TRAIN_CONFIGS = {
     # ── base (CVAE) ───────────────────────────────────────────────────────
     ("base", "ENZYMES"): {
         "num_epoch_classifier": 300,
-        "num_epoch_gen":        50,
+        "num_epoch_gen":        70,
     },
     ("base", "NCI1"): {
         "num_epoch_classifier": 300,
-        "num_epoch_gen":        50,
+        "num_epoch_gen":        70,
     },
     ("base", "Cora"): {
-        "num_epoch_classifier": 5,
-        "num_epoch_gen":        10,
+        "num_epoch_classifier": 300,
+        "num_epoch_gen":        70,
     },
     ("base", "USA"): {
-        "num_epoch_classifier": 5,
-        "num_epoch_gen":        10,
+        "num_epoch_classifier": 300,
+        "num_epoch_gen":        70,
     },
 
     # ── fallback defaults ─────────────────────────────────────────────────
     ("default", "default"): {
-        "num_epoch_classifier": 100,
-        "num_epoch_gen":        50,
+        "num_epoch_classifier": 300,
+        "num_epoch_gen":        70,
     },
 }
 
@@ -200,7 +197,7 @@ DEFAULT_SEEDS = [11, 22, 33, 44, 55]
 # Output / paths
 # ---------------------------------------------------------------------------
 DEFAULT_DATA_ROOT   = "data"
-DEFAULT_MODEL_ROOT  = "models"
+DEFAULT_MODEL_ROOT  = "artifacts"
 DEFAULT_OUTPUT_ROOT = "outputs"
 
 RESULT_DIR = "results"

@@ -52,8 +52,8 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-
-from torch_geometric.data import Data, DataLoader
+from torch_geometric.data import DataLoader
+from torch_geometric.data import Data
 from torch_geometric.datasets import TUDataset, Planetoid, Airports, PolBlogs
 from torch_geometric.utils import k_hop_subgraph
 import torch.nn.functional as F

@@ -65,18 +65,7 @@
 │   │           ├── gen_model.pth
 │   │           └── train_log.csv
 │   └── best_model.pth
-├── new_config.py
-├── new_main.py
 ├── outputs
-│   ├── Cora_proposed_seed11.csv
-│   ├── Cora_proposed_seed22.csv
-│   ├── ENZYMES_proposed_seed11.csv
-│   ├── ENZYMES_proposed_seed22.csv
-│   ├── proposed_metrics_summary.txt
-│   ├── structural_Cora_proposed_seed11.csv
-│   ├── structural_Cora_proposed_seed22.csv
-│   ├── structural_ENZYMES_proposed_seed11.csv
-│   └── structural_ENZYMES_proposed_seed22.csv
 ├── requirements.txt
 ├── results
 │   └── proposed_metrics_summary.txt
@@ -219,4 +208,4 @@
     ├── train_gan.py
     └── train_target.py
 
-62 directories, 158 files
+62 directories, 147 files

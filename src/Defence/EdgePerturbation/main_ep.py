@@ -18,23 +18,23 @@ Supported arches   : proposed (diffusion) | random (GAN) | base (CVAE)
 
 Examples
 --------
-# Pseudo-edge defence on ENZYMES, LOGRA attack, proposed arch
+# Single dataset
 python main_ep.py --arch proposed --dataset ENZYMES --attack logra
 
-# Multiple datasets in one run
+# Multiple datasets
 python main_ep.py --arch proposed --dataset ENZYMES NCI1 Cora PolBlogs --attack csgra
 
-# Override augmentation knobs at the command line
-python main_ep.py --arch proposed --dataset Cora --attack logra \\
+# Override PE knobs
+python main_ep.py --arch proposed --dataset Cora --attack logra \
     --pe-top-k 10 --pe-similarity euclidean
 
-# Disable augmentation entirely (standard training baseline / ablation)
+# Disable pseudo-edges (baseline ablation)
 python main_ep.py --arch base --dataset NCI1 --attack csgra --no-pseudo-edges
 
-# Specific seeds
-python main_ep.py --arch random --dataset PolBlogs --attack logra --seeds 11 22
+# Use global top-k budget instead of per-node
+python main_ep.py --arch proposed --dataset ENZYMES --attack logra --pe-global
 
-# Dry-run: print resolved config and exit
+# Dry-run
 python main_ep.py --arch proposed --dataset ENZYMES --attack logra --dry-run
 """
 
