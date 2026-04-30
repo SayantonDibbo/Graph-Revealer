@@ -1,27 +1,16 @@
 # The Graph Revealer: Generative Diffusion Model Inversion Attacks against Graph Neural Networks
 
-
+The Figure below shows the framework of The Graph Revealer:
 <h1 align="center">
   <img src="Framework/Framework.png" alt="framework" />
 </h1>
 
-[Demo Video](Framework/attack_flow_hd.mp4)
 
 #### Keywords: Graph Reconstruction Attacks, Generative Diffusion Models,  Model Inversion Threats, Privacy Vulnerabilities, Label-only Attacks
 
-
-The Figure below shows the framework of The Graph Revealer:
-
-<p align="center">
-  <img src="Framework/Framework.png" alt="framework" />
-</p>
-
-[Demo Video](Framework/attack_flow_hd.mp4)
-
-
 # LOGRA — Graph Generation Benchmark
 
-A benchmarking framework for graph generation using three architectures:
+A benchmarking framework for revealing target model training data demonstrated using three architectures:
 **Laplace Diffusion** (proposed), **GAN** (random), and **CVAE** (base).
 Each architecture is evaluated against real graph data using a GIN-based shadow model attack pipeline.
 
@@ -105,8 +94,8 @@ All the required modules are placed in requirements.txt
 |-----------|--------------|-----------------------|
 | ENZYMES   | TUDataset    | Graph classification  |
 | NCI1      | TUDataset    | Graph classification  |
-| Cora      | Planetoid    | Ego-graph (node → graph) |
-| PolBlogs  | PolBlogs     | Ego-graph             |
+| Cora      | Planetoid    | node classification   |
+| PolBlogs  | PolBlogs     | node classification   |
 
 ---
 
@@ -115,8 +104,7 @@ All the required modules are placed in requirements.txt
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/logra.git
-cd logra
+git clone https://github.com/SayantonDibbo/Graph-Revealer.git
 ```
 
 ### 2. Create a virtual environment (recommended)
@@ -193,7 +181,7 @@ All experiments are launched through `main.py` via the command line.
 ### Basic syntax
 
 ```bash
-python main.py --arch <arch> --dataset <dataset> [options]
+python main.py --arch <arch> --dataset <dataset> --attack <attack> [options]
 ```
 
 ### Arguments
@@ -202,6 +190,7 @@ python main.py --arch <arch> --dataset <dataset> [options]
 |---|---|---|
 | `--arch` | ✅ | Architecture: `proposed` / `random` / `base` |
 | `--dataset` | ✅ | One or more dataset names (space-separated) |
+| `--attack` | ✅ | Attack type: `logra` / `csgra` / `sota`  |
 | `--seeds` | ❌ | Random seeds (default: `11 22 33 44 55`) |
 | `--epochs-classifier` | ❌ | Override classifier training epochs |
 | `--epochs-gen` | ❌ | Override generative model training epochs |
