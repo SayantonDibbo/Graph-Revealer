@@ -295,10 +295,6 @@ python src/Defence/DifferentialPrivacy/main_dp.py \
     --arch proposed --dataset ENZYMES --attack logra --dry-run
 ```
 
-#### How DP-SGD works here
-
-At each training step the defence: (1) clips each parameter's gradient to L2 norm ≤ `max_grad_norm`, bounding the sensitivity; then (2) adds i.i.d. Gaussian noise calibrated to `noise_multiplier × max_grad_norm`, hiding individual contributions. Privacy consumption ε is computed and logged after every epoch using RDP accounting, so you can track the privacy budget as training progresses. Test graphs are never modified.
-
 #### DP output files
 
 Results are tagged with `_dp_` and saved alongside standard outputs:
@@ -363,10 +359,6 @@ python src/Defence/EdgePerturbation/main_ep.py \
 python src/Defence/EdgePerturbation/main_ep.py \
     --arch proposed --dataset ENZYMES --attack logra --dry-run
 ```
-
-#### How edge perturbation works here
-
-For each training graph: (1) pairwise similarity between all node feature vectors is computed; (2) the diagonal and existing edges are zeroed out so only genuinely new connections are proposed; (3) for each node (per-node mode) or globally, the top-k most similar unconnected pairs are selected; (4) bidirectional edges are added and the augmented graph replaces the original for training. A summary of edges added is printed at the start of each run so you can verify the augmentation.
 
 #### PE output files
 
