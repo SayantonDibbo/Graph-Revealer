@@ -11,7 +11,7 @@ The Figure below shows the framework of The Graph Revealer:
 # LOGRA — Graph Generation Benchmark
 
 A benchmarking framework for revealing target model training data demonstrated using three architectures:
-**Laplace Diffusion** (proposed), **GAN** (random), and **CVAE** (base).
+**Laplace Diffusion** (proposed), **GAN** , and **AE** .
 Each architecture is evaluated against real graph data using a GIN-based shadow model attack pipeline.
 
 ---
@@ -32,7 +32,7 @@ Each architecture is evaluated against real graph data using a GIN-based shadow 
 ---
 
 ## Overview
-The Graph Revealer: Generative Diffusion Model Inversion Attacks against Graph Neural Networks ....
+Graph data, which captures relational patterns and makes many data mining activities easier, has not received as much attention in the literature as privacy problems in image and tabular data. Relational graph data that contains nodes and edges may be extremely sensitive, creating avenues for attackers to obtain or disclose private graph information. In order to leak or reveal target model training data (graphs), we first propose two novel black-box model inversion (MI) privacy attacks against graph neural networks (GNNs) with limited adversarial capabilities. These attacks are called label-only graph reconstruction attacks (LO-GRA) and confidence score-based graph reconstruction attacks (CSGRA).
 
 
 ---
@@ -62,14 +62,229 @@ Full Dataset
 ## Project Structure
 
 ```
-LOGRA/
-│
-├── main.py               # CLI entry-point and full pipeline
-├── config.py             # Dataset configs, arch configs, hyperparameters
-│
-├── data/                 # Downloaded datasets (auto-created)
-├── models/               # Saved model checkpoints (auto-created)
-└── outputs/              # CSV results and summary files (auto-created)
+.
+├── Framework
+│   └── Framework.png
+├── LICENSE
+├── README.md
+├── __pycache__
+│   └── config.cpython-311.pyc
+├── config.py
+├── data
+│   ├── Cora
+│   │   ├── processed
+│   │   │   ├── data.pt
+│   │   │   ├── pre_filter.pt
+│   │   │   └── pre_transform.pt
+│   │   └── raw
+│   │       ├── ind.cora.allx
+│   │       ├── ind.cora.ally
+│   │       ├── ind.cora.graph
+│   │       ├── ind.cora.test.index
+│   │       ├── ind.cora.tx
+│   │       ├── ind.cora.ty
+│   │       ├── ind.cora.x
+│   │       └── ind.cora.y
+│   └── TUDataset
+│       └── ENZYMES
+│           ├── processed
+│           │   ├── data.pt
+│           │   ├── pre_filter.pt
+│           │   └── pre_transform.pt
+│           └── raw
+│               ├── ENZYMES_A.txt
+│               ├── ENZYMES_graph_indicator.txt
+│               ├── ENZYMES_graph_labels.txt
+│               ├── ENZYMES_node_attributes.txt
+│               ├── ENZYMES_node_labels.txt
+│               └── README.txt
+├── inference
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-311.pyc
+│   │   └── inference.cpython-311.pyc
+│   └── inference.py
+├── main.py
+├── models
+│   ├── Cora
+│   │   ├── best_model.pth
+│   │   ├── proposed
+│   │   │   ├── 11
+│   │   │   │   ├── best_model.pth
+│   │   │   │   ├── gen_model.pth
+│   │   │   │   └── train_log.csv
+│   │   │   └── 22
+│   │   │       ├── best_model.pth
+│   │   │       ├── gen_model.pth
+│   │   │       └── train_log.csv
+│   │   └── train_log.csv
+│   ├── ENZYMES
+│   │   └── proposed
+│   │       ├── 11
+│   │       │   ├── best_model.pth
+│   │       │   ├── gen_model.pth
+│   │       │   └── train_log.csv
+│   │       └── 22
+│   │           ├── best_model.pth
+│   │           ├── gen_model.pth
+│   │           └── train_log.csv
+│   └── best_model.pth
+├── new_config.py
+├── new_main.py
+├── outputs
+│   ├── Cora_proposed_seed11.csv
+│   ├── Cora_proposed_seed22.csv
+│   ├── ENZYMES_proposed_seed11.csv
+│   ├── ENZYMES_proposed_seed22.csv
+│   ├── proposed_metrics_summary.txt
+│   ├── structural_Cora_proposed_seed11.csv
+│   ├── structural_Cora_proposed_seed22.csv
+│   ├── structural_ENZYMES_proposed_seed11.csv
+│   └── structural_ENZYMES_proposed_seed22.csv
+├── requirements.txt
+├── results
+│   └── proposed_metrics_summary.txt
+├── setup.py
+├── src
+│   ├── Datasets
+│   │   ├── __init__.py
+│   │   └── data
+│   │       ├── Cora
+│   │       │   ├── Cora
+│   │       │   │   ├── processed
+│   │       │   │   │   ├── data.pt
+│   │       │   │   │   ├── pre_filter.pt
+│   │       │   │   │   └── pre_transform.pt
+│   │       │   │   └── raw
+│   │       │   │       ├── ind.cora.allx
+│   │       │   │       ├── ind.cora.ally
+│   │       │   │       ├── ind.cora.graph
+│   │       │   │       ├── ind.cora.test.index
+│   │       │   │       ├── ind.cora.tx
+│   │       │   │       ├── ind.cora.ty
+│   │       │   │       ├── ind.cora.x
+│   │       │   │       └── ind.cora.y
+│   │       │   ├── processed
+│   │       │   │   ├── data.pt
+│   │       │   │   ├── pre_filter.pt
+│   │       │   │   └── pre_transform.pt
+│   │       │   └── raw
+│   │       │       ├── ind.cora.allx
+│   │       │       ├── ind.cora.ally
+│   │       │       ├── ind.cora.graph
+│   │       │       ├── ind.cora.test.index
+│   │       │       ├── ind.cora.tx
+│   │       │       ├── ind.cora.ty
+│   │       │       ├── ind.cora.x
+│   │       │       └── ind.cora.y
+│   │       ├── ENZYMES
+│   │       │   ├── processed
+│   │       │   │   ├── data.pt
+│   │       │   │   ├── pre_filter.pt
+│   │       │   │   └── pre_transform.pt
+│   │       │   └── raw
+│   │       │       ├── ENZYMES_A.txt
+│   │       │       ├── ENZYMES_graph_indicator.txt
+│   │       │       ├── ENZYMES_graph_labels.txt
+│   │       │       ├── ENZYMES_node_attributes.txt
+│   │       │       ├── ENZYMES_node_labels.txt
+│   │       │       └── README.txt
+│   │       ├── NCI1
+│   │       │   ├── processed
+│   │       │   │   ├── data.pt
+│   │       │   │   ├── pre_filter.pt
+│   │       │   │   └── pre_transform.pt
+│   │       │   └── raw
+│   │       │       ├── NCI1_A.txt
+│   │       │       ├── NCI1_graph_indicator.txt
+│   │       │       ├── NCI1_graph_labels.txt
+│   │       │       ├── NCI1_node_labels.txt
+│   │       │       └── README.txt
+│   │       └── PolBlogs
+│   │           ├── processed
+│   │           │   ├── data.pt
+│   │           │   ├── pre_filter.pt
+│   │           │   └── pre_transform.pt
+│   │           └── raw
+│   │               ├── README
+│   │               ├── adjacency.tsv
+│   │               ├── labels.tsv
+│   │               ├── names.tsv
+│   │               └── names_labels.tsv
+│   ├── Defence
+│   │   ├── DifferentialPrivacy
+│   │   │   ├── __init__.py
+│   │   │   ├── config_dp.py
+│   │   │   └── main_dp.py
+│   │   ├── EdgePerturbation
+│   │   │   ├── __init__.py
+│   │   │   ├── config_ep.py
+│   │   │   └── main_ep.py
+│   │   └── __init__.py
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   └── __init__.cpython-311.pyc
+│   ├── attack
+│   │   ├── CSGRA
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── __init__.cpython-311.pyc
+│   │   │   │   └── csgra.cpython-311.pyc
+│   │   │   └── csgra.py
+│   │   ├── LOGRA
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── __init__.cpython-311.pyc
+│   │   │   │   └── logra.cpython-311.pyc
+│   │   │   └── logra.py
+│   │   ├── SOTA
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── __init__.cpython-311.pyc
+│   │   │   │   └── sota.cpython-311.pyc
+│   │   │   └── sota.py
+│   │   ├── __init__.py
+│   │   └── __pycache__
+│   │       └── __init__.cpython-311.pyc
+│   ├── metrics
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-311.pyc
+│   │   │   └── metrics.cpython-311.pyc
+│   │   └── metrics.py
+│   ├── models
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-311.pyc
+│   │   │   ├── autoencoder.cpython-311.pyc
+│   │   │   ├── diffusion.cpython-311.pyc
+│   │   │   ├── gan.cpython-311.pyc
+│   │   │   └── gnn.cpython-311.pyc
+│   │   ├── autoencoder.py
+│   │   ├── diffusion.py
+│   │   ├── gan.py
+│   │   └── gnn.py
+│   └── utils
+│       ├── __init__.py
+│       ├── __pycache__
+│       │   ├── __init__.cpython-311.pyc
+│       │   └── utils.cpython-311.pyc
+│       └── utils.py
+├── structure.txt
+├── template.py
+└── train
+    ├── __pycache__
+    │   ├── train_autoencoder.cpython-311.pyc
+    │   ├── train_diffusion.cpython-311.pyc
+    │   ├── train_gan.cpython-311.pyc
+    │   └── train_target.cpython-311.pyc
+    ├── train_autoencoder.py
+    ├── train_diffusion.py
+    ├── train_gan.py
+    └── train_target.py
+
+62 directories, 158 files
+
 ```
 
 ---
