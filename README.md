@@ -446,7 +446,10 @@ Model checkpoints are saved to `--model-root`:
 Higher structural scores (closer to 100%) indicate better structural fidelity. Lower distance metrics indicate better generative quality. When comparing defences, higher distance/lower structural scores indicate a more effective defence (the generated graphs diverge more from the real training graphs).
 
 ---
-
+<p align="center">
+  <img src="Images/t-sne-nci1.png.png" width="45%" />
+  <img src="Images/t-sne_logra.png.png" width="45%" />
+</p>
 ## Citation
 
 If you use this code in your research, please cite:
