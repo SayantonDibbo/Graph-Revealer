@@ -190,15 +190,15 @@ def compute_structural(orig_list, gen_list):
 
         return max(0.0, (1 - dist / val_range) * 100)
 
-    deg_s, clust_s, bc_s, cc_s = [], [], [], []
+    clust_s, bc_s, cc_s =  [], [], []
 
     for og, gg in zip(orig_list, gen_list):
         Go, Gg = ensure_nx(og), ensure_nx(gg)
 
-        deg_s.append(similarity_score(
+        """deg_s.append(similarity_score(
             [d for _, d in Go.degree()],
             [d for _, d in Gg.degree()]
-        ))
+        ))"""
 
         clust_s.append(similarity_score(
             list(nx.clustering(Go).values()),
@@ -215,6 +215,6 @@ def compute_structural(orig_list, gen_list):
             list(nx.closeness_centrality(Gg).values())
         ))
 
-    return deg_s, clust_s, bc_s, cc_s
+    return clust_s, bc_s, cc_s
 
 

@@ -420,7 +420,7 @@ def run_experiment(cfg, dataset_name, seed):
     euclid_l, mmd_l, kernel_l, spectral_l = compute_metrics(
         original_graph, generated_graph, node_features
     )
-    deg_s, lcc_s, bc_s, cc_s = compute_structural(original_graph, generated_graph)
+    lcc_s, bc_s, cc_s = compute_structural(original_graph, generated_graph)
 
     # ── 11. Save CSVs ─────────────────────────────────────────────────────────
     out_dir = cfg["output_root"]
@@ -437,7 +437,6 @@ def run_experiment(cfg, dataset_name, seed):
     metric_df.to_csv(metric_file, index=False)
 
     struct_df = pd.DataFrame({
-        "degree_scores": deg_s,
         "lcc_scores":    lcc_s,
         "bc_scores":     bc_s,
         "cc_scores":     cc_s,
@@ -454,7 +453,6 @@ def run_experiment(cfg, dataset_name, seed):
         "mmd":      float(np.mean(mmd_l)),
         "kernel":   float(np.mean(kernel_l)),
         "spectral": float(np.mean(spectral_l)),
-        "degree":   float(np.mean(deg_s)),
         "lcc":      float(np.mean(lcc_s)),
         "bc":       float(np.mean(bc_s)),
         "cc":       float(np.mean(cc_s)),

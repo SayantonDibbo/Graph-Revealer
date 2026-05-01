@@ -439,7 +439,6 @@ Model checkpoints are saved to `--model-root`:
 
 | Metric | Description |
 |---|---|
-| **Degree** | Similarity of degree distributions |
 | **LCC** | Similarity of local clustering coefficient distributions |
 | **Betweenness** | Similarity of betweenness centrality distributions |
 | **Closeness** | Similarity of closeness centrality distributions |
