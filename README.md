@@ -447,11 +447,14 @@ Higher structural scores (closer to 100%) indicate better structural fidelity. L
 
 ---
 <p align="center">
-  <img src="Images/t-sne-nci1.png.png" width="45%" />
-  <img src="Images/t-sne_logra.png.png" width="45%" />
+  <img src="Images/t-sne-nci1.png" width="45%" />
+  <img src="Images/t-sne_logra.png" width="45%" />
 </p>
 ## Citation
-
+<p align="center">
+  <img src="Images/t-sne-nci1.png" width="40%" style="margin-right: 10px;" />
+  <img src="Images/t-sne_logra.png" width="40%" />
+</p>
 If you use this code in your research, please cite:
 
 ```bibtex
