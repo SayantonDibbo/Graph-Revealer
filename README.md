@@ -2,7 +2,7 @@
 
 The Figure below shows the framework of The Graph Revealer:
 <h1 align="center">
-  <img src="Framework/Framework.png" alt="framework" />
+  <img src="Images/Framework.png" alt="framework" />
 </h1>
 
 
