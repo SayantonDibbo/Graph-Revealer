@@ -460,8 +460,8 @@ If you use this code in your research, please cite:
 
 ```bibtex
 @misc{GraphRevealer2026,
-  title  = {LOGRA: Graph Generation Benchmark under Shadow Model Settings},
-  author = {sayanton Dibbo, Adebayo Keji, and Sudip Vhaduri},
+  title  = {The Graph Revealer: Generative Diffusion Model Inversion Attacks against Graph Neural Networks},
+  author = {Authors},
   year   = {2026},
   url    = {}
 }
