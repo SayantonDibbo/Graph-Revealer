@@ -10,10 +10,10 @@ The Figure below shows the framework of The Graph Revealer:
 
 # LOGRA — Graph Generation Benchmark
 
-A benchmarking framework for revealing target model training data demonstrated using three architectures:
+A benchmarking framework for revealing target model training data, demonstrated using three architectures:
 **Laplace Diffusion** (proposed), **GAN**, and **AE**.
 Each architecture is evaluated against real graph data using a GIN-based shadow model attack pipeline.
-Two defence mechanisms are included: **Differential Privacy (DP-SGD)** and **Edge Perturbation (Pseudo-Edge Augmentation)**.
+Two defense mechanisms are included: **Differential Privacy (DP-SGD)** and **Edge Perturbation (Pseudo-Edge Augmentation)**.
 
 ---
 
@@ -26,8 +26,8 @@ Two defence mechanisms are included: **Differential Privacy (DP-SGD)** and **Edg
 - [Configuration](#configuration)
 - [Usage](#usage)
   - [Attack](#attack-runner-mainpy)
-  - [Defence: Differential Privacy](#defence-differential-privacy-main_dppy)
-  - [Defence: Edge Perturbation](#defence-edge-perturbation-main_eppy)
+  - [Defense: Differential Privacy](#defence-differential-privacy-main_dppy)
+  - [Defense: Edge Perturbation](#defence-edge-perturbation-main_eppy)
 - [Output](#output)
 - [Evaluation Metrics](#evaluation-metrics)
 - [Plots](#plots)
@@ -39,7 +39,7 @@ Two defence mechanisms are included: **Differential Privacy (DP-SGD)** and **Edg
 
 Graph data, which captures relational patterns and makes many data mining activities easier, has not received as much attention in the literature as privacy problems in image and tabular data. Relational graph data that contains nodes and edges may be extremely sensitive, creating avenues for attackers to obtain or disclose private graph information. In order to leak or reveal target model training data (graphs), we first propose two novel black-box model inversion (MI) privacy attacks against graph neural networks (GNNs) with limited adversarial capabilities. These attacks are called label-only graph reconstruction attacks (LO-GRA) and confidence score-based graph reconstruction attacks (CSGRA).
 
-We also provide two complementary defence mechanisms that can be used independently or compared against each other:
+We also provide two complementary defense mechanisms that can be used independently or compared against each other:
 
 - **Differential Privacy (DP-SGD):** Trains the GIN classifier with gradient clipping and calibrated Gaussian noise, providing formal (ε, δ)-DP guarantees.
 - **Edge Perturbation:** Augments training graphs with synthetic pseudo-edges between feature-similar nodes, making the classifier more robust to structural membership-inference attacks.
@@ -66,7 +66,7 @@ Full Dataset
                       Generated graphs evaluated against target graphs
 ```
 
-### Defence integration points
+### Defense integration points
 
 | Defence | Where it acts | What it changes |
 |---|---|---|
@@ -141,7 +141,7 @@ pip install torch-scatter torch-sparse torch-cluster torch-spline-conv \
     -f https://data.pyg.org/whl/torch-<YOUR_TORCH_VERSION>+<CUDA>.html
 ```
 
-Replace `<YOUR_TORCH_VERSION>` (e.g. `2.0.0`) and `<CUDA>` (e.g. `cu118` or `cpu`) accordingly.
+Replace `<YOUR_TORCH_VERSION>` (e.g., `2.0.0`) and `<CUDA>` (e.g., `cu118` or `cpu`) accordingly.
 
 ### 5. Install remaining dependencies
 
@@ -179,7 +179,7 @@ All three config files share the same structure for common sections:
 
 **`get_gen_config(arch)`** — returns default hyperparameters for each generative model (learning rate, latent dim, hidden dim, etc.).
 
-**Defence-specific getters:**
+** Defense-specific getters:**
 
 **`get_dp_config(dataset)`** *(config_dp.py only)* — returns `noise_multiplier`, `max_grad_norm`, `delta`, and `use_dp` for each dataset.
 
@@ -248,7 +248,7 @@ python main.py --arch proposed --dataset Cora --attack logra --dry-run
 
 ---
 
-### Defence: Differential Privacy (`main_dp.py`)
+### Defense: Differential Privacy (`main_dp.py`)
 
 Trains the GIN classifier with **DP-SGD** (gradient clipping + Gaussian noise), providing formal (ε, δ)-differential privacy guarantees. The rest of the pipeline (attack, generative model, evaluation) runs unchanged.
 
@@ -309,7 +309,7 @@ Results are tagged with `_dp_` and saved alongside standard outputs:
 
 ---
 
-### Defence: Edge Perturbation (`main_ep.py`)
+### Defense: Edge Perturbation (`main_ep.py`)
 
 Augments **training graphs only** with synthetic pseudo-edges between nodes whose feature vectors are most similar (cosine or Euclidean). This makes the classifier more robust to structural membership-inference attacks without any privacy budget. Test graphs are never modified.
 
@@ -374,19 +374,19 @@ Results are tagged with `_pe_` and saved alongside standard outputs:
 
 ---
 
-### Comparing attack vs. defences
+### Comparing attack vs. defenses
 
-To compare the undefended attack against both defences on the same dataset and architecture, run all three scripts with matching arguments:
+To compare the undefended attack against both defenses on the same dataset and architecture, run all three scripts with matching arguments:
 
 ```bash
 # Undefended (attack baseline)
 python main.py --arch proposed --dataset ENZYMES --attack logra --seeds 11 22
 
-# DP-SGD defence
+# DP-SGD defense
 python src/Defence/DifferentialPrivacy/main_dp.py \
     --arch proposed --dataset ENZYMES --attack logra --seeds 11 22
 
-# Edge Perturbation defence
+# Edge Perturbation defense
 python src/Defence/EdgePerturbation/main_ep.py \
     --arch proposed --dataset ENZYMES --attack logra --seeds 11 22
 ```
@@ -417,7 +417,7 @@ Model checkpoints are saved to `--model-root`:
 |---|---|
 | `best_model.pth` | Best GIN classifier checkpoint |
 | `train_log.csv` | Epoch-by-epoch classifier log (attack baseline) |
-| `train_log_dp.csv` | Epoch-by-epoch log including ε per epoch (DP defence) |
+| `train_log_dp.csv` | Epoch-by-epoch log including ε per epoch (DP defense) |
 | `train_log_pe.csv` | Epoch-by-epoch log (PE defence) |
 | `gen_model.pth` | Saved generative model checkpoint |
 
@@ -443,11 +443,11 @@ Model checkpoints are saved to `--model-root`:
 | **Betweenness** | Similarity of betweenness centrality distributions |
 | **Closeness** | Similarity of closeness centrality distributions |
 
-Higher structural scores (closer to 100%) indicate better structural fidelity. Lower distance metrics indicate better generative quality. When comparing defences, higher distance/lower structural scores indicate a more effective defence (the generated graphs diverge more from the real training graphs).
+Higher structural scores (closer to 100%) indicate better structural fidelity. Lower distance metrics indicate better generative quality. When comparing defenses, higher distance/lower structural scores indicate a more effective defense (the generated graphs diverge more from the real training graphs).
 
 ---
 ## Plots
-The t-sne figures below shows the comparison of the revealed embeddings by our proposed logra attack with diffusion, AE and GAN model architecture. The embeddings generated by the diffusion model tends to be more closer to the original embeddings when compared to the other architectures.
+The t-SNE figures below show the comparison of the revealed embeddings by our proposed logra attack with diffusion, AE, and GAN model architectures. The embeddings generated by the diffusion model tend to be closer to the original embeddings when compared to the other architectures.
 <p align="center">
   <img src="Images/t-sne-nci1.png" width="45%" />
   <img src="Images/t-sne_logra.png" width="45%" />
